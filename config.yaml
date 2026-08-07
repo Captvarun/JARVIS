@@ -1,0 +1,15 @@
+app:
+  name: "JARVIS"
+  version: "1.0.0"
+  environment: "development"
+
+ui:
+  theme: "dark_hud"
+  window_title: "JARVIS — Production AI Desktop Interface"
+  width: 1280
+  height: 800
+  fps_limit: 60
+
+system:
+  log_level: "DEBUG"
+  auto_start_services: true
