@@ -6,7 +6,7 @@ from ui.widgets.hud_panel import HUDPanel
 class IntegratedConsolePanel(HUDPanel):
     """
     Unified Console Panel embedding log stream and command prompt line in a single chamfered panel.
-    Supports tagged message formats: [core], [user], [voice], [vision], [plugin], [error].
+    Supports tagged message formats: [core], [user], [voice], [vision], [plugin], [personality], [error].
     """
     command_submitted = Signal(str)
 
@@ -27,9 +27,9 @@ class IntegratedConsolePanel(HUDPanel):
         t = datetime.now().strftime("%H:%M:%S")
         self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#8fe3ff'><b>[core]</b> System initialized</font>")
         self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#10b981'><b>[voice]</b> Speech synthesis engine online</font>")
-        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#38bdf8'><b>[vision]</b> Camera stream initialized</font>")
-        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#4fd0ff'><b>[user]</b> Open my workspace</font>")
-        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#8fe3ff'><b>[core]</b> Workspace active</font>\n")
+        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#f59e0b'><b>[personality]</b> Adaptive Profile: COMPANION</font>")
+        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#4fd0ff'><b>[user]</b> hello JARVIS</font>")
+        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#8fe3ff'><b>[jarvis]</b> Hello, Varun. Systems are online.</font>\n")
 
         self.content_layout.addWidget(self.log_edit, 1)
 
@@ -63,14 +63,19 @@ class IntegratedConsolePanel(HUDPanel):
         t = datetime.now().strftime("%H:%M:%S")
         tag_colors = {
             "core": "#8fe3ff",
+            "jarvis": "#8fe3ff",
             "user": "#4fd0ff",
             "voice": "#10b981",
             "vision": "#38bdf8",
             "plugin": "#f59e0b",
+            "personality": "#f59e0b",
             "error": "#ef4444"
         }
         color = tag_colors.get(tag.lower(), "#38bdf8")
-        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='{color}'><b>[{tag}]</b> {text}</font>")
+        
+        # Replace newlines with break tags for multiline personality profiles
+        formatted_text = text.replace("\n", "<br/>")
+        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='{color}'><b>[{tag}]</b> {formatted_text}</font>")
 
     @Slot(str)
     def append_user_msg(self, text: str):
@@ -78,4 +83,4 @@ class IntegratedConsolePanel(HUDPanel):
 
     @Slot(str)
     def append_system_msg(self, text: str):
-        self.append_tagged_msg("core", text)
+        self.append_tagged_msg("jarvis", text)

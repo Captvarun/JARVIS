@@ -1,4 +1,5 @@
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton
@@ -9,6 +10,7 @@ from core.state import state
 from core.logger import logger
 from core.config import config
 from core.brain.worker import BrainWorkerThread
+from engine.voice.voice_engine import voice_engine
 from ui.styles.hud_styles import DARK_HUD_QSS
 
 # Widgets
@@ -25,9 +27,8 @@ from ui.widgets.subsystem_status import SubsystemStatusWidget
 
 class JARVISMainWindow(QMainWindow):
     """
-    JARVIS Milestone 3 Integrated Main Window.
-    Connects user command input to non-blocking BrainWorkerThread and updates
-    Reactor Core animations, State Indicators, and Console Stream logs.
+    JARVIS Milestone 4 Main Window.
+    Integrates Adaptive Personality, Voice Engine (Push-to-Talk / TTS), and Shortcut Key bindings.
     """
     def __init__(self):
         super().__init__()
@@ -76,11 +77,16 @@ class JARVISMainWindow(QMainWindow):
 
         base_layout.addWidget(workspace, 1)
 
+        # Keyboard Shortcut: Ctrl + Shift + V for Push-to-Talk
+        self.ptt_shortcut = QShortcut(QKeySequence("Ctrl+Shift+V"), self)
+        self.ptt_shortcut.activated.connect(self._trigger_push_to_talk)
+
         # Event Bus Signal Wiring
         events.system_status_changed.connect(self._on_status_changed)
+        events.voice_state_changed.connect(self._on_state_changed)
         events.log_emitted.connect(self._on_log_emitted)
 
-        logger.info("JARVIS Milestone 3 HUD Interface initialized.")
+        logger.info("JARVIS Milestone 4 HUD Interface initialized.")
 
     def _create_left_column(self) -> QWidget:
         col = QWidget()
@@ -140,10 +146,21 @@ class JARVISMainWindow(QMainWindow):
         self.state_label.setAlignment(Qt.AlignCenter)
         reactor_layout.addWidget(self.state_label)
 
-        # Developer State Control Bar
+        # Developer State Control Bar + Push to Talk Button
+        state_box = QHBoxLayout()
+        state_box.setSpacing(8)
+
         self.state_controls = StateControlsWidget()
         self.state_controls.state_requested.connect(self._on_state_changed)
-        reactor_layout.addWidget(self.state_controls, 0, Qt.AlignCenter)
+
+        self.ptt_btn = QPushButton("🎤 Push-to-Talk")
+        self.ptt_btn.setProperty("class", "hud-btn-primary")
+        self.ptt_btn.clicked.connect(self._trigger_push_to_talk)
+
+        state_box.addWidget(self.state_controls)
+        state_box.addWidget(self.ptt_btn)
+
+        reactor_layout.addLayout(state_box)
 
         layout.addWidget(reactor_container, 0)
 
@@ -176,24 +193,35 @@ class JARVISMainWindow(QMainWindow):
 
         return col
 
-    # Asynchronous Brain Pipeline Execution
-    def _handle_user_command(self, cmd: str):
+    # Push-to-Talk & Command Execution
+    def _trigger_push_to_talk(self):
+        logger.info("[MainWindow] Push-to-Talk triggered via UI/Hotkey.")
+        transcript = voice_engine.trigger_push_to_talk()
+        if transcript:
+            self.console_panel.append_tagged_msg("user", transcript)
+            self._handle_user_command(transcript, is_spoken=True)
+
+    def _handle_user_command(self, cmd: str, is_spoken: bool = False):
         p_clean = cmd.strip()
         if not p_clean:
             return
 
         # Launch BrainWorkerThread off the main GUI thread
-        self.active_worker = BrainWorkerThread(p_clean)
+        self.active_worker = BrainWorkerThread(p_clean, is_spoken=is_spoken)
         self.active_worker.state_changed.connect(self._on_state_changed)
         self.active_worker.response_ready.connect(self._on_brain_response)
         self.active_worker.start()
 
     @Slot(str, str)
     def _on_brain_response(self, intent: str, response_text: str):
-        # Format response stream
-        self.console_panel.append_tagged_msg("jarvis", response_text)
+        if response_text:
+            if "personality" in intent or "modify_personality" in intent or "get_personality" in intent:
+                self.console_panel.append_tagged_msg("personality", response_text)
+            else:
+                self.console_panel.append_tagged_msg("jarvis", response_text)
 
     # State & Command Handlers
+    @Slot(str)
     def _on_state_changed(self, new_state: str):
         self.state_label.setText(f"STATE: {new_state}")
         self.reactor_widget.set_state(new_state)
