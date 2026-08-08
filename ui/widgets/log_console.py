@@ -1,10 +1,12 @@
+from datetime import datetime
 from PySide6.QtCore import Slot, Signal
 from PySide6.QtWidgets import QLabel, QTextEdit, QLineEdit, QPushButton, QHBoxLayout
 from ui.widgets.hud_panel import HUDPanel
 
 class IntegratedConsolePanel(HUDPanel):
     """
-    Unified Console Panel embedding both log stream and command prompt in the same HUD panel.
+    Unified Console Panel embedding log stream and command prompt line in a single chamfered panel.
+    Supports tagged message formats: [core], [user], [voice], [vision], [plugin], [error].
     """
     command_submitted = Signal(str)
 
@@ -20,10 +22,14 @@ class IntegratedConsolePanel(HUDPanel):
         self.log_edit.setProperty("class", "hud-log")
         self.log_edit.setReadOnly(True)
         self.log_edit.setPlaceholderText(">>> JARVIS Command Log & Response Stream...")
-        self.log_edit.append("<font color='#475569'>[00:44:12] [core] System initialized</font>")
-        self.log_edit.append("<font color='#475569'>[00:44:13] [core] Neural interface ready</font>")
-        self.log_edit.append("<font color='#4fd0ff'>[00:44:15] [user] Open my workspace</font>")
-        self.log_edit.append("<font color='#8fe3ff'>[00:44:16] [core] Launching IDE...</font>\n")
+        
+        # Initial logs
+        t = datetime.now().strftime("%H:%M:%S")
+        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#8fe3ff'><b>[core]</b> System initialized</font>")
+        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#10b981'><b>[voice]</b> Speech synthesis engine online</font>")
+        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#38bdf8'><b>[vision]</b> Camera stream initialized</font>")
+        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#4fd0ff'><b>[user]</b> Open my workspace</font>")
+        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='#8fe3ff'><b>[core]</b> Workspace active</font>\n")
 
         self.content_layout.addWidget(self.log_edit, 1)
 
@@ -50,13 +56,26 @@ class IntegratedConsolePanel(HUDPanel):
         text = self.prompt_input.text().strip()
         if text:
             self.prompt_input.clear()
-            self.append_user_msg(text)
+            self.append_tagged_msg("user", text)
             self.command_submitted.emit(text)
+
+    def append_tagged_msg(self, tag: str, text: str):
+        t = datetime.now().strftime("%H:%M:%S")
+        tag_colors = {
+            "core": "#8fe3ff",
+            "user": "#4fd0ff",
+            "voice": "#10b981",
+            "vision": "#38bdf8",
+            "plugin": "#f59e0b",
+            "error": "#ef4444"
+        }
+        color = tag_colors.get(tag.lower(), "#38bdf8")
+        self.log_edit.append(f"<font color='#64748b'>[{t}]</font> <font color='{color}'><b>[{tag}]</b> {text}</font>")
 
     @Slot(str)
     def append_user_msg(self, text: str):
-        self.log_edit.append(f"<font color='#4fd0ff'><b>[user]</b> {text}</font>")
+        self.append_tagged_msg("user", text)
 
     @Slot(str)
     def append_system_msg(self, text: str):
-        self.log_edit.append(f"<font color='#8fe3ff'><b>[core]</b> {text}</font>\n")
+        self.append_tagged_msg("core", text)

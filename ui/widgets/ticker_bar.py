@@ -2,10 +2,12 @@ import time
 from datetime import datetime
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel
+from core.state import state
+from core.config import config
 
 class TickerBarWidget(QFrame):
     """
-    Top Ticker Bar for system mode, operator identity, uptime, and precision digital clock.
+    Top Ticker Bar for system mode, operator identity, uptime, location, dynamic model, and clock.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -24,11 +26,14 @@ class TickerBarWidget(QFrame):
         layout.setSpacing(8)
 
         # Micro Telemetry Chips
+        location_str = config.get("system.location", "LOC INDIA")
+        model_str = state.get("active_model", config.get("app.model", "MODEL GPT-4o ●●●"))
+
         self.uptime_chip = self._make_chip("UP 00:00:00")
         self.mode_chip = self._make_chip("MODE ONLINE")
         self.op_chip = self._make_chip("OP VARUN")
-        self.loc_chip = self._make_chip("LOC IN")
-        self.model_chip = self._make_chip("MODEL GPT-4o ●●●")
+        self.loc_chip = self._make_chip(location_str)
+        self.model_chip = self._make_chip(f"MODEL {model_str}")
 
         layout.addWidget(self.uptime_chip)
         layout.addWidget(self.mode_chip)
@@ -51,6 +56,9 @@ class TickerBarWidget(QFrame):
         """)
         layout.addWidget(self.clock_label)
 
+        # Connect state signal
+        state.state_updated.connect(self._on_state_updated)
+
         # Clock Timer
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._update_ticker)
@@ -61,6 +69,12 @@ class TickerBarWidget(QFrame):
         lbl = QLabel(text)
         lbl.setProperty("class", "ticker-chip")
         return lbl
+
+    def _on_state_updated(self, key: str, value: object):
+        if key == "active_model":
+            self.model_chip.setText(f"MODEL {value}")
+        elif key == "status":
+            self.mode_chip.setText(f"MODE {str(value).upper()}")
 
     def _update_ticker(self):
         # Update Clock

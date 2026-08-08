@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QPushButton, QFrame
+    QPushButton
 )
 
 from core.events import events
@@ -24,9 +24,9 @@ from ui.widgets.subsystem_status import SubsystemStatusWidget
 
 class JARVISMainWindow(QMainWindow):
     """
-    JARVIS Milestone 2 Production Main Window.
-    Implements 3-column HUD desktop interface with Top Ticker Bar, AI Reactor Core,
-    Chamfered Cut-Corner Glass Panels, Integrated Console, and Realtime Telemetry.
+    JARVIS Milestone 2 Polished HUD Main Window.
+    Implements 3-column asymmetric layout, 1.4x enlarged vector Reactor Core with 3 particle rings,
+    Chamfered Cut-Corner HUD Panels, Integrated Console with Tag Hierarchy, and Realtime Telemetry.
     """
     def __init__(self):
         super().__init__()
@@ -74,10 +74,10 @@ class JARVISMainWindow(QMainWindow):
 
         # Event Bus Signal Wiring
         events.system_status_changed.connect(self._on_status_changed)
-        events.ai_response_received.connect(self.console_panel.append_system_msg)
-        events.user_command_submitted.connect(self.console_panel.append_user_msg)
+        events.ai_response_received.connect(lambda msg: self.console_panel.append_tagged_msg("core", msg))
+        events.user_command_submitted.connect(lambda msg: self.console_panel.append_tagged_msg("user", msg))
 
-        logger.info("JARVIS Milestone 2 HUD Interface initialized.")
+        logger.info("JARVIS Polished HUD Interface initialized.")
 
     def _create_left_column(self) -> QWidget:
         col = QWidget()
@@ -125,9 +125,9 @@ class JARVISMainWindow(QMainWindow):
         reactor_container = QWidget()
         reactor_layout = QVBoxLayout(reactor_container)
         reactor_layout.setContentsMargins(0, 0, 0, 0)
-        reactor_layout.setSpacing(6)
+        reactor_layout.setSpacing(4)
 
-        # Reactor Core Visualizer
+        # 1.4x Enlarged Reactor Core Visualizer
         self.reactor_widget = ReactorOrbWidget()
         reactor_layout.addWidget(self.reactor_widget, 0, Qt.AlignCenter)
 
@@ -180,20 +180,20 @@ class JARVISMainWindow(QMainWindow):
         self.audio_eq_panel.set_state(new_state)
         state.set("status", new_state)
 
-        # Echo log
-        self.console_panel.append_system_msg(f"System State Transition: {new_state}")
+        # Console Log Tag
+        self.console_panel.append_tagged_msg("core", f"System State Transition: {new_state}")
 
     def _handle_user_command(self, cmd: str):
         events.user_command_submitted.emit(cmd)
 
         # Execute built-in browser plugin command check
-        if "browser" in cmd.lower() or "google" in cmd.lower() or "search" in cmd.lower():
+        if any(w in cmd.lower() for w in ["browser", "google", "search", "youtube", "github"]):
             from plugins.browser.plugin import BrowserPlugin
             b = BrowserPlugin()
             b.search_web(cmd)
-            self.console_panel.append_system_msg(f"Executed Browser Plugin query: '{cmd}'")
+            self.console_panel.append_tagged_msg("plugin", f"Executed Plugin query: '{cmd}'")
         else:
-            self.console_panel.append_system_msg(f"Command '{cmd}' received into EventBus.")
+            self.console_panel.append_tagged_msg("core", f"Command '{cmd}' processed.")
 
     def _on_nav_clicked(self, name: str):
         for btn_name, btn in self.sidebar_btns.items():
