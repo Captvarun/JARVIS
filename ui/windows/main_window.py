@@ -1,5 +1,4 @@
-from datetime import datetime
-from PySide6.QtCore import Qt, QTimer, Slot
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QFrame
@@ -10,20 +9,30 @@ from core.state import state
 from core.logger import logger
 from core.config import config
 from ui.styles.hud_styles import DARK_HUD_QSS
+
+# Widgets
+from ui.widgets.ticker_bar import TickerBarWidget
+from ui.widgets.hud_panel import HUDPanel
+from ui.widgets.device_snapshot import DeviceSnapshotWidget
+from ui.widgets.activity_graph import ActivityGraphWidget
 from ui.widgets.reactor_orb import ReactorOrbWidget
-from ui.widgets.telemetry_bar import TelemetryBarWidget
-from ui.widgets.log_console import LogConsoleWidget
-from ui.widgets.prompt_bar import PromptBarWidget
+from ui.widgets.state_controls import StateControlsWidget
+from ui.widgets.log_console import IntegratedConsolePanel
+from ui.widgets.schedule_panel import SchedulePanelWidget
+from ui.widgets.audio_eq import AudioEQWidget
+from ui.widgets.subsystem_status import SubsystemStatusWidget
 
 class JARVISMainWindow(QMainWindow):
     """
-    JARVIS Milestone 1 Production Main Window.
+    JARVIS Milestone 2 Production Main Window.
+    Implements 3-column HUD desktop interface with Top Ticker Bar, AI Reactor Core,
+    Chamfered Cut-Corner Glass Panels, Integrated Console, and Realtime Telemetry.
     """
     def __init__(self):
         super().__init__()
         
         # Load configuration
-        title = config.get("ui.window_title", "JARVIS — Production AI Desktop Interface")
+        title = config.get("ui.window_title", "JARVIS — Personal AI Operating System")
         width = config.get("ui.width", 1280)
         height = config.get("ui.height", 800)
 
@@ -31,146 +40,160 @@ class JARVISMainWindow(QMainWindow):
         self.resize(width, height)
         self.setMinimumSize(1024, 650)
         
-        # Apply stylesheet
+        # Apply QSS stylesheet
         self.setStyleSheet(DARK_HUD_QSS)
 
-        # Central Widget & Main Layout
+        # Main Base Layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(12)
+        base_layout = QVBoxLayout(central_widget)
+        base_layout.setContentsMargins(0, 0, 0, 0)
+        base_layout.setSpacing(0)
 
-        # 1. Top Navbar
-        main_layout.addWidget(self._create_header())
+        # 1. Top Ticker Bar
+        self.ticker_bar = TickerBarWidget()
+        base_layout.addWidget(self.ticker_bar)
 
-        # 2. Main Body (Sidebar + Central Core Viewport + Right Telemetry)
-        body_layout = QHBoxLayout()
+        # 2. Main 3-Column HUD Workspace Layout
+        workspace = QWidget()
+        body_layout = QHBoxLayout(workspace)
+        body_layout.setContentsMargins(12, 12, 12, 12)
         body_layout.setSpacing(12)
 
-        body_layout.addWidget(self._create_sidebar(), 1)
-        body_layout.addWidget(self._create_center_viewport(), 4)
-        body_layout.addWidget(TelemetryBarWidget(), 1)
+        # Left, Center, Right Columns
+        left_col = self._create_left_column()
+        center_col = self._create_center_column()
+        right_col = self._create_right_column()
 
-        main_layout.addLayout(body_layout, 1)
+        body_layout.addWidget(left_col, 0)
+        body_layout.addWidget(center_col, 1)
+        body_layout.addWidget(right_col, 0)
 
-        # Real-time Clock Timer
-        self.clock_timer = QTimer(self)
-        self.clock_timer.timeout.connect(self._update_clock)
-        self.clock_timer.start(1000)
-        self._update_clock()
+        base_layout.addWidget(workspace, 1)
 
-        # Connect Event Bus Signals
+        # Event Bus Signal Wiring
         events.system_status_changed.connect(self._on_status_changed)
-        events.ai_response_received.connect(self._on_ai_response)
-        events.user_command_submitted.connect(self.console_widget.append_user_msg)
+        events.ai_response_received.connect(self.console_panel.append_system_msg)
+        events.user_command_submitted.connect(self.console_panel.append_user_msg)
 
-        logger.info("JARVIS MainWindow setup complete [Milestone 1].")
+        logger.info("JARVIS Milestone 2 HUD Interface initialized.")
 
-    def _create_header(self) -> QFrame:
-        frame = QFrame()
-        frame.setProperty("class", "hud-panel")
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(16, 10, 16, 10)
+    def _create_left_column(self) -> QWidget:
+        col = QWidget()
+        col.setFixedWidth(230)
+        layout = QVBoxLayout(col)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
 
-        # Title & Subtitle
-        title_box = QVBoxLayout()
-        title_box.setSpacing(2)
-        
-        title_lbl = QLabel("J.A.R.V.I.S")
-        title_lbl.setProperty("class", "hud-title")
-        sub_lbl = QLabel("// SYSTEM ONLINE v1.0.0 — MILESTONE 1 SKELETON")
-        sub_lbl.setProperty("class", "hud-subtitle")
-
-        title_box.addWidget(title_lbl)
-        title_box.addWidget(sub_lbl)
-
-        # Status Badge
-        self.status_badge = QLabel("ONLINE")
-        self.status_badge.setProperty("class", "status-online")
-        self.status_badge.setAlignment(Qt.AlignCenter)
-
-        # Realtime Clock
-        self.clock_label = QLabel("--:--:--")
-        self.clock_label.setStyleSheet("color: #00f0ff; font-weight: bold; font-size: 15px; font-family: monospace;")
-
-        layout.addLayout(title_box)
-        layout.addWidget(self.status_badge)
-        layout.addStretch()
-        layout.addWidget(self.clock_label)
-
-        return frame
-
-    def _create_sidebar(self) -> QFrame:
-        frame = QFrame()
-        frame.setProperty("class", "hud-panel")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 16, 12, 16)
-        layout.setSpacing(8)
-
-        section_title = QLabel("NAVIGATION")
-        section_title.setProperty("class", "hud-subtitle")
-        layout.addWidget(section_title)
+        # Navigation Bar Panel
+        nav_panel = HUDPanel()
+        nav_title = QLabel("NAVIGATION")
+        nav_title.setProperty("class", "hud-subtitle")
+        nav_panel.content_layout.addWidget(nav_title)
 
         nav_items = ["Dashboard", "AI Core", "Voice Engine", "Vision Engine", "Plugins", "Settings"]
         self.sidebar_btns = {}
-
         for item in nav_items:
             btn = QPushButton(f"⚡  {item}")
             btn.setProperty("class", "sidebar-btn")
             if item == "Dashboard":
                 btn.setProperty("class", "sidebar-btn active")
             btn.clicked.connect(lambda _, name=item: self._on_nav_clicked(name))
-            layout.addWidget(btn)
+            nav_panel.content_layout.addWidget(btn)
             self.sidebar_btns[item] = btn
 
-        layout.addStretch()
+        layout.addWidget(nav_panel)
 
-        arch_lbl = QLabel("ARCHITECTURE\nModular Qt Engine")
-        arch_lbl.setStyleSheet("color: #64748b; font-size: 11px; font-weight: 600;")
-        layout.addWidget(arch_lbl)
+        # Device Snapshot Panel
+        self.device_panel = DeviceSnapshotWidget()
+        layout.addWidget(self.device_panel)
 
-        return frame
+        # Weekly Activity Graph Panel
+        self.activity_panel = ActivityGraphWidget()
+        layout.addWidget(self.activity_panel, 1)
 
-    def _create_center_viewport(self) -> QFrame:
-        frame = QFrame()
-        frame.setProperty("class", "hud-panel-active")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
+        return col
 
-        # Central Visual Reactor Core Widget & Header
-        top_box = QHBoxLayout()
-        title_lbl = QLabel("CENTRAL REACTOR & SYSTEM STREAM")
-        title_lbl.setProperty("class", "hud-title")
-        
+    def _create_center_column(self) -> QWidget:
+        col = QWidget()
+        layout = QVBoxLayout(col)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        # Central AI Reactor Core Zone
+        reactor_container = QWidget()
+        reactor_layout = QVBoxLayout(reactor_container)
+        reactor_layout.setContentsMargins(0, 0, 0, 0)
+        reactor_layout.setSpacing(6)
+
+        # Reactor Core Visualizer
         self.reactor_widget = ReactorOrbWidget()
-        
-        top_box.addWidget(title_lbl, 1)
-        top_box.addWidget(self.reactor_widget)
+        reactor_layout.addWidget(self.reactor_widget, 0, Qt.AlignCenter)
 
-        layout.addLayout(top_box)
+        # Dynamic State Label
+        self.state_label = QLabel("STATE: IDLE")
+        self.state_label.setProperty("class", "hud-title")
+        self.state_label.setAlignment(Qt.AlignCenter)
+        reactor_layout.addWidget(self.state_label)
 
-        # Console Stream Widget
-        self.console_widget = LogConsoleWidget()
-        layout.addWidget(self.console_widget, 1)
+        # Developer State Control Bar
+        self.state_controls = StateControlsWidget()
+        self.state_controls.state_requested.connect(self._on_state_changed)
+        reactor_layout.addWidget(self.state_controls, 0, Qt.AlignCenter)
 
-        # Prompt Input Bar Widget
-        self.prompt_bar = PromptBarWidget()
-        self.prompt_bar.command_submitted.connect(self._handle_command)
-        layout.addWidget(self.prompt_bar)
+        layout.addWidget(reactor_container, 0)
 
-        return frame
+        # Integrated Console & Stream Panel
+        self.console_panel = IntegratedConsolePanel()
+        self.console_panel.set_active(True)
+        self.console_panel.command_submitted.connect(self._handle_user_command)
+        layout.addWidget(self.console_panel, 1)
 
-    def _update_clock(self):
-        now = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-        self.clock_label.setText(now)
+        return col
 
-    def _handle_command(self, cmd: str):
-        self.console_widget.append_user_msg(cmd)
+    def _create_right_column(self) -> QWidget:
+        col = QWidget()
+        col.setFixedWidth(260)
+        layout = QVBoxLayout(col)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        # Schedule Panel
+        self.schedule_panel = SchedulePanelWidget()
+        layout.addWidget(self.schedule_panel, 1)
+
+        # Audio EQ Panel
+        self.audio_eq_panel = AudioEQWidget()
+        layout.addWidget(self.audio_eq_panel)
+
+        # Subsystem Status Panel
+        self.subsystem_panel = SubsystemStatusWidget()
+        layout.addWidget(self.subsystem_panel)
+
+        return col
+
+    # State & Command Handlers
+    def _on_state_changed(self, new_state: str):
+        self.state_label.setText(f"STATE: {new_state}")
+        self.reactor_widget.set_state(new_state)
+        self.audio_eq_panel.set_state(new_state)
+        state.set("status", new_state)
+
+        # Echo log
+        self.console_panel.append_system_msg(f"System State Transition: {new_state}")
+
+    def _handle_user_command(self, cmd: str):
         events.user_command_submitted.emit(cmd)
-        self.console_widget.append_system_msg(f"Command '{cmd}' received into EventBus.")
+
+        # Execute built-in browser plugin command check
+        if "browser" in cmd.lower() or "google" in cmd.lower() or "search" in cmd.lower():
+            from plugins.browser.plugin import BrowserPlugin
+            b = BrowserPlugin()
+            b.search_web(cmd)
+            self.console_panel.append_system_msg(f"Executed Browser Plugin query: '{cmd}'")
+        else:
+            self.console_panel.append_system_msg(f"Command '{cmd}' received into EventBus.")
 
     def _on_nav_clicked(self, name: str):
         for btn_name, btn in self.sidebar_btns.items():
@@ -183,8 +206,4 @@ class JARVISMainWindow(QMainWindow):
 
     @Slot(str)
     def _on_status_changed(self, status: str):
-        self.status_badge.setText(status.upper())
-
-    @Slot(str)
-    def _on_ai_response(self, response: str):
-        self.console_widget.append_system_msg(response)
+        self._on_state_changed(status)
