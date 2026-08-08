@@ -32,15 +32,14 @@ class BrainWorkerThread(QThread):
             # 3. Brain Processing
             response = brain.process_command(self.prompt)
 
-            # 4. Speaking State & TTS Synthesis
-            if response.text and response.intent != "voice_control":
-                self.state_changed.emit("SPEAKING")
-                # Trigger TTS synthesis
-                voice_engine.speak(response.text)
-                time.sleep(0.5)
-
             # Emit Result to Console Stream
             self.response_ready.emit(response.intent, response.text)
+
+            # 4. Speaking State & Synchronous TTS Synthesis within Worker Thread
+            if response.text and response.intent != "voice_control":
+                self.state_changed.emit("SPEAKING")
+                # Trigger synchronous speech synthesis inside worker thread
+                voice_engine.speak(response.text, sync=True)
 
             # Return to IDLE
             self.state_changed.emit("IDLE")

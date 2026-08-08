@@ -18,9 +18,9 @@ class VoiceEngine(BaseLifecycleComponent):
         logger.info("[VoiceEngine] Voice Subsystem initialized.")
         return True
 
-    def speak(self, text: str, on_complete_cb=None):
+    def speak(self, text: str, sync: bool = False):
         """Synthesize and speak text response."""
-        self.tts.speak(text, on_complete_cb)
+        self.tts.speak(text, sync=sync)
 
     def stop_speaking(self):
         """Stop active TTS speech output immediately."""
