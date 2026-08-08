@@ -2,6 +2,7 @@ import time
 from datetime import datetime
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel
+from core.events import events
 from core.state import state
 from core.config import config
 
@@ -27,7 +28,7 @@ class TickerBarWidget(QFrame):
 
         # Micro Telemetry Chips
         location_str = config.get("system.location", "LOC INDIA")
-        model_str = state.get("active_model", config.get("app.model", "MODEL GPT-4o ●●●"))
+        model_str = state.get("active_model", config.get("app.model", "GPT-4o ●●●"))
 
         self.uptime_chip = self._make_chip("UP 00:00:00")
         self.mode_chip = self._make_chip("MODE ONLINE")
@@ -56,8 +57,8 @@ class TickerBarWidget(QFrame):
         """)
         layout.addWidget(self.clock_label)
 
-        # Connect state signal
-        state.state_updated.connect(self._on_state_updated)
+        # Connect EventBus state signal
+        events.state_updated.connect(self._on_state_updated)
 
         # Clock Timer
         self.timer = QTimer(self)
