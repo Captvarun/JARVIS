@@ -8,6 +8,7 @@ from core.events import events
 from core.state import state
 from core.logger import logger
 from core.config import config
+from core.brain.worker import BrainWorkerThread
 from ui.styles.hud_styles import DARK_HUD_QSS
 
 # Widgets
@@ -24,9 +25,9 @@ from ui.widgets.subsystem_status import SubsystemStatusWidget
 
 class JARVISMainWindow(QMainWindow):
     """
-    JARVIS Milestone 2 Polished HUD Main Window.
-    Implements 3-column asymmetric layout, 1.4x enlarged vector Reactor Core with 3 particle rings,
-    Chamfered Cut-Corner HUD Panels, Integrated Console with Tag Hierarchy, and Realtime Telemetry.
+    JARVIS Milestone 3 Integrated Main Window.
+    Connects user command input to non-blocking BrainWorkerThread and updates
+    Reactor Core animations, State Indicators, and Console Stream logs.
     """
     def __init__(self):
         super().__init__()
@@ -40,6 +41,9 @@ class JARVISMainWindow(QMainWindow):
         self.resize(width, height)
         self.setMinimumSize(1024, 650)
         
+        # Active worker thread reference
+        self.active_worker = None
+
         # Apply QSS stylesheet
         self.setStyleSheet(DARK_HUD_QSS)
 
@@ -74,10 +78,9 @@ class JARVISMainWindow(QMainWindow):
 
         # Event Bus Signal Wiring
         events.system_status_changed.connect(self._on_status_changed)
-        events.ai_response_received.connect(lambda msg: self.console_panel.append_tagged_msg("core", msg))
-        events.user_command_submitted.connect(lambda msg: self.console_panel.append_tagged_msg("user", msg))
+        events.log_emitted.connect(self._on_log_emitted)
 
-        logger.info("JARVIS Polished HUD Interface initialized.")
+        logger.info("JARVIS Milestone 3 HUD Interface initialized.")
 
     def _create_left_column(self) -> QWidget:
         col = QWidget()
@@ -173,6 +176,23 @@ class JARVISMainWindow(QMainWindow):
 
         return col
 
+    # Asynchronous Brain Pipeline Execution
+    def _handle_user_command(self, cmd: str):
+        p_clean = cmd.strip()
+        if not p_clean:
+            return
+
+        # Launch BrainWorkerThread off the main GUI thread
+        self.active_worker = BrainWorkerThread(p_clean)
+        self.active_worker.state_changed.connect(self._on_state_changed)
+        self.active_worker.response_ready.connect(self._on_brain_response)
+        self.active_worker.start()
+
+    @Slot(str, str)
+    def _on_brain_response(self, intent: str, response_text: str):
+        # Format response stream
+        self.console_panel.append_tagged_msg("jarvis", response_text)
+
     # State & Command Handlers
     def _on_state_changed(self, new_state: str):
         self.state_label.setText(f"STATE: {new_state}")
@@ -180,20 +200,8 @@ class JARVISMainWindow(QMainWindow):
         self.audio_eq_panel.set_state(new_state)
         state.set("status", new_state)
 
-        # Console Log Tag
-        self.console_panel.append_tagged_msg("core", f"System State Transition: {new_state}")
-
-    def _handle_user_command(self, cmd: str):
-        events.user_command_submitted.emit(cmd)
-
-        # Execute built-in browser plugin command check
-        if any(w in cmd.lower() for w in ["browser", "google", "search", "youtube", "github"]):
-            from plugins.browser.plugin import BrowserPlugin
-            b = BrowserPlugin()
-            b.search_web(cmd)
-            self.console_panel.append_tagged_msg("plugin", f"Executed Plugin query: '{cmd}'")
-        else:
-            self.console_panel.append_tagged_msg("core", f"Command '{cmd}' processed.")
+    def _on_log_emitted(self, tag: str, msg: str):
+        self.console_panel.append_tagged_msg(tag, msg)
 
     def _on_nav_clicked(self, name: str):
         for btn_name, btn in self.sidebar_btns.items():
