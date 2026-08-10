@@ -19,8 +19,9 @@ class IntentCategory(Enum):
 class IntentDetector:
     """
     Analyzes natural-language input to classify intent.
-    Implements Milestone 6 Patch: Contextual Vision Intent Detection.
-    Combines user prompt, recent conversation context, and active visual context.
+    Implements Milestone 6 Patch 2: High-Confidence Implicit Vision Intent Detection.
+    Resolves queries like 'What am I seeing?' to VISION_SCREEN_ANALYSIS without prior context,
+    while accurately avoiding conversational false-positives ('Do you see what I mean?').
     """
     def detect(self, prompt: str, context_mgr=None) -> IntentCategory:
         p = prompt.lower().strip()
@@ -32,55 +33,71 @@ class IntentDetector:
         if context_mgr and hasattr(context_mgr, "has_recent_visual_context"):
             has_visual_ctx = context_mgr.has_recent_visual_context()
 
-        # 1. Explicit Screen Vision Phrases (ALWAYS trigger VISION_SCREEN_ANALYSIS)
-        explicit_vision_phrases = [
-            "analyze my screen", "look at my screen", "what am i looking at",
-            "what's on my screen", "what is on my screen", "read my screen",
-            "inspect my screen", "scan my screen", "describe the important things you can see on my screen",
-            "can you see my code", "describe what you see", "what else can you see",
-            "screen analysis"
+        # 0. Conversational Idioms Exclusion (Prevent false-positives on conversational speech)
+        conversational_idioms = [
+            "do you see what i mean", "do you see my point", "do you see how",
+            "what do you think", "in this situation", "what's wrong with my life",
+            "tell me a joke", "how are you"
+        ]
+        if any(idiom in p for idiom in conversational_idioms) and not ("screen" in p or "code" in p or "error" in p):
+            return IntentCategory.CONVERSATION
+
+        # 1. High-Confidence Visual Questions (Work WITH or WITHOUT previous visual context)
+        high_confidence_visual_questions = [
+            "what am i seeing", "what am i looking at", "what do you see on my screen",
+            "what do you see", "what can you see", "describe what you see", "describe my screen",
+            "what's on my screen", "what is on my screen", "can you see my screen",
+            "can you see my code", "can you read this", "what does this say",
+            "what's wrong with this", "do you see any errors", "do you see an error",
+            "what error do you see", "where is the problem", "what is happening on my screen",
+            "analyze my screen", "look at my screen", "inspect my screen", "scan my screen",
+            "describe the important things you can see on my screen", "screen analysis"
         ]
 
-        if any(w in p for w in explicit_vision_phrases):
+        if any(w in p for w in high_confidence_visual_questions):
             logger.info("[core] Intent candidate: VISION_SCREEN_ANALYSIS")
             events.log_emitted.emit("core", "[core] Intent candidate: VISION_SCREEN_ANALYSIS")
             if has_visual_ctx:
+                logger.info("[conversation] Recent visual context: AVAILABLE")
                 events.log_emitted.emit("conversation", "[conversation] Recent visual context: AVAILABLE")
             else:
-                events.log_emitted.emit("conversation", "[conversation] Recent visual context: NOT_AVAILABLE")
+                logger.info("[conversation] Recent visual context: NONE")
+                events.log_emitted.emit("conversation", "[conversation] Recent visual context: NONE")
+                logger.info("[vision] Visual question confidence: HIGH")
+                events.log_emitted.emit("vision", "[vision] Visual question confidence: HIGH")
+
             logger.info("[core] Final intent: VISION_SCREEN_ANALYSIS")
             events.log_emitted.emit("core", "[core] Final intent: VISION_SCREEN_ANALYSIS")
             return IntentCategory.VISION_SCREEN_ANALYSIS
 
-        # 2. Contextual / Implicit Vision Triggers (Require recent visual context or specific visual keywords)
-        implicit_vision_phrases = [
-            "what else am i doing", "what do you see", "what error is that",
-            "what error do you see", "what was the error", "what does that say",
-            "where is the problem", "what's wrong with this", "what should i do next",
-            "did it disappear", "did anything change", "what's on my screen now"
+        # 2. Contextual / Implicit Vision Follow-up Triggers (Require active recent visual context)
+        implicit_vision_followups = [
+            "what else am i doing", "what was the error", "what was the error you saw",
+            "what was the thing you saw earlier", "what did you see earlier",
+            "did it disappear", "did the error disappear", "is the error still there",
+            "did anything change", "what's on my screen right now", "what's on my screen now",
+            "what should i do next"
         ]
-        visual_ref_tokens = ["this", "that", "it", "here", "there"]
 
         if has_visual_ctx:
-            matched_phrase = next((w for w in implicit_vision_phrases if w in p), None)
+            matched_phrase = next((w for w in implicit_vision_followups if w in p), None)
             matched_ref = None
-            if not matched_phrase and any(ref in p for ref in visual_ref_tokens):
+            if not matched_phrase and any(ref in p for ref in ["this", "that", "it", "here", "there"]):
                 if any(kw in p for kw in ["see", "code", "error", "doing", "screen", "problem", "disappear", "change", "look"]):
-                    matched_ref = next((ref for ref in visual_ref_tokens if ref in p), "visual reference")
+                    matched_ref = next((ref for ref in ["this", "that", "it", "here", "there"] if ref in p), "visual reference")
 
             if matched_phrase or matched_ref:
-                ref_text = matched_phrase or matched_ref
                 logger.info("[core] Intent candidate: VISION_SCREEN_ANALYSIS")
                 events.log_emitted.emit("core", "[core] Intent candidate: VISION_SCREEN_ANALYSIS")
+                logger.info("[conversation] Recent visual context: AVAILABLE")
                 events.log_emitted.emit("conversation", "[conversation] Recent visual context: AVAILABLE")
-                logger.info(f'[conversation] Visual reference detected: "{ref_text}"')
-                events.log_emitted.emit("conversation", f'[conversation] Visual reference detected: "{ref_text}"')
                 logger.info("[core] Final intent: VISION_SCREEN_ANALYSIS")
                 events.log_emitted.emit("core", "[core] Final intent: VISION_SCREEN_ANALYSIS")
                 return IntentCategory.VISION_SCREEN_ANALYSIS
         else:
-            if any(w in p for w in implicit_vision_phrases):
-                events.log_emitted.emit("conversation", "[conversation] Recent visual context: NOT_AVAILABLE")
+            if any(w in p for w in implicit_vision_followups):
+                logger.info("[conversation] Recent visual context: NONE")
+                events.log_emitted.emit("conversation", "[conversation] Recent visual context: NONE")
 
         # 3. High-Priority Personality Queries
         if any(w in p for w in [

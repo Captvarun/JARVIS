@@ -52,14 +52,27 @@ class CommandRouter:
             # Determine whether current screen capture is required or previous visual context is sufficient
             if has_visual_ctx:
                 if any(phrase in p_lower for phrase in [
-                    "what was the error", "what was on my screen", "what application was i using",
-                    "what did you see earlier", "what error did you see earlier", "what was that error"
+                    "what was the error", "what was the error you saw", "what was on my screen", 
+                    "what application was i using", "what did you see earlier", 
+                    "what error did you see earlier", "what was that error",
+                    "what was the thing you saw earlier"
                 ]):
                     current_screen_required = False
+                    logger.info("[vision] Visual reference detected: PREVIOUS_ANALYSIS")
+                    events.log_emitted.emit("vision", "[vision] Visual reference detected: PREVIOUS_ANALYSIS")
+                else:
+                    if any(phrase in p_lower for phrase in [
+                        "did it disappear", "did the error disappear", "is the error still there",
+                        "did anything change", "what's on my screen right now", "what's on my screen now"
+                    ]):
+                        logger.info("[vision] Visual reference detected: PREVIOUS_ANALYSIS")
+                        events.log_emitted.emit("vision", "[vision] Visual reference detected: PREVIOUS_ANALYSIS")
 
+            logger.info(f"[vision] Current screen required: {'YES' if current_screen_required else 'NO'}")
             events.log_emitted.emit("vision", f"[vision] Current screen required: {'YES' if current_screen_required else 'NO'}")
 
             if current_screen_required:
+                logger.info("[vision] Capture mode: ONE_SHOT")
                 events.log_emitted.emit("vision", "[vision] Capture mode: ONE_SHOT")
                 raw_vision_resp = vision_engine.analyze_screen(prompt, is_user_explicit=True)
             else:
