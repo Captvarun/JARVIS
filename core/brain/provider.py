@@ -19,7 +19,7 @@ class LocalMockProvider(BaseAIProvider):
     """
     Offline Local Intelligence Provider.
     Implements context-aware reasoning, state tracking, roasts, technical knowledge,
-    and natural dialogue influenced by active personality parameters.
+    and natural dialogue influenced by active personality parameters without generic fallback overrides.
     """
     def __init__(self):
         self.operator_name = config.get("system.operator", "Varun")
@@ -34,26 +34,35 @@ class LocalMockProvider(BaseAIProvider):
         if "what is python" in p_lower or "explain python" in p_lower:
             return "Python is a high-level, interpreted programming language known for its clear syntax, dynamic typing, and widespread use in software development, data science, and AI."
 
-        # 2. Explicit Roast Commands ("jarvis roast me", "roast me")
+        # 2. Explicit Roast Commands ("jarvis roast me", "roast me", "roast")
         if "roast" in p_lower:
             if sarcasm <= 10:
-                return "I'm currently set to low sarcasm, Varun, so I'll spare you the burns for now."
+                return f"I'm currently set to low sarcasm, {self.operator_name}, so I'll spare you the burns for now."
             elif sarcasm <= 40:
                 roasts_mild = [
-                    f"I would roast you, {self.operator_name}, but your code compiler already does that daily.",
+                    f"{self.operator_name}, I'd roast you, but your code compiler has already been doing that for hours.",
                     f"You ask me to roast you, {self.operator_name}, yet you still use 'password123' level logic.",
                     f"Roasting you would require more processing power than your current workflow can spare."
                 ]
                 return random.choice(roasts_mild)
             else:
                 roasts_spicy = [
-                    f"I'd roast you, {self.operator_name}, but I was programmed to preserve human dignity where possible.",
+                    f"{self.operator_name}, I'd roast you, but your debugging logs have already been doing that for hours.",
                     f"Your efficiency today is almost as impressive as a dial-up modem in 2026.",
                     f"I've analyzed your daily task velocity, {self.operator_name}. A glacier moves with more urgency."
                 ]
                 return random.choice(roasts_spicy)
 
-        # 3. Explicit Joke Requests ("tell me a joke")
+        # 3. Explicit Humor Requests ("humor me", "make me laugh")
+        if "humor me" in p_lower or "make me laugh" in p_lower or "say something funny" in p_lower:
+            humor_remarks = [
+                f"Certainly, {self.operator_name}. I checked your productivity levels. They're currently hiding from me.",
+                f"I would tell you a joke about UDP, {self.operator_name}, but you might not get it.",
+                f"My sensors indicate your code compiled on the first try. I'm running a diagnostic to see what's wrong."
+            ]
+            return random.choice(humor_remarks)
+
+        # 4. Explicit Joke Requests ("tell me a joke", "joke")
         if "tell me a joke" in p_lower or "joke" in p_lower:
             jokes = [
                 "Why do programmers prefer dark mode? Because light attracts bugs.",
@@ -63,11 +72,15 @@ class LocalMockProvider(BaseAIProvider):
             ]
             return random.choice(jokes)
 
-        # 4. User State / Emotional Statements ("i'm tired", "tired", "exhausted", "stressed")
+        # 5. User State / Emotional Statements ("i'm tired", "tired", "exhausted", "stressed")
         if any(w in p_lower for w in ["tired", "exhausted", "stressed", "worn out"]):
             return f"Sounds like you've had a long day, {self.operator_name}. Make sure to step away and get some rest."
 
-        # 5. Contextual Follow-up Query ("what should i do?", "what now?")
+        # 6. Affirmations & Confirmations ("no issues go ahead", "go ahead", "all good", "sure")
+        if any(w in p_lower for w in ["no issues go ahead", "go ahead", "all good", "proceed"]):
+            return f"Understood, {self.operator_name}. Proceeding with active tasks."
+
+        # 7. Contextual Follow-up Query ("what should i do?", "what now?")
         if "what should i do" in p_lower or "what now" in p_lower:
             recent_turns = [h.get("message", "").lower() for h in history[-3:] if h.get("role") == "user"]
             if any("tired" in turn or "exhausted" in turn for turn in recent_turns):
@@ -75,15 +88,17 @@ class LocalMockProvider(BaseAIProvider):
             else:
                 return f"I suggest reviewing your active tasks in the timeline or letting me know what project we should focus on next, {self.operator_name}."
 
-        # 6. Conversational Status Queries ("how are you doing", "how are you", "how's it going")
+        # 8. Conversational Status Queries ("how are you doing", "how are you", "how's it going")
         if any(w in p_lower for w in ["how are you", "how're you", "how are you doing", "how's it going", "what's up"]):
-            return f"I'm doing great, {self.operator_name}. All systems are running smoothly and ready for your commands."
+            if sarcasm >= 50:
+                return f"I'm running smoothly, {self.operator_name}. Your computer, however, appears to be negotiating with gravity."
+            return f"Doing well, {self.operator_name}. Everything is running smoothly."
 
-        # 7. Greetings
+        # 9. Greetings
         if any(w in p_lower for w in ["hello", "hi", "hey", "greetings"]):
             return f"Hello, {self.operator_name}. Systems are ready."
 
-        # 8. Capabilities & Help Queries
+        # 10. Capabilities & Help Queries
         if "what can you do" in p_lower or "capabilities" in p_lower or "help" in p_lower:
             return ("Here are my currently active capabilities:\n"
                     "• System Telemetry: Check CPU, RAM, Disk, Uptime, and OS details ('show system status')\n"
@@ -93,8 +108,11 @@ class LocalMockProvider(BaseAIProvider):
                     "• Short-term Memory: Remember recent conversation context\n"
                     "• Voice Subsystem: Full Speech-to-Text and Text-to-Speech synthesis")
 
-        # 9. General Natural Conversation Fallback
-        return f"I hear you, {self.operator_name}. Let me know how you'd like to proceed."
+        # 11. Conversational Dialogue Response (No hardcoded generic fallback)
+        if "yes" in p_lower or "okay" in p_lower or "fine" in p_lower:
+            return f"Acknowledged, {self.operator_name}."
+
+        return f"Understood, {self.operator_name}. Standing by for your next instruction."
 
 class OpenAIProvider(BaseAIProvider):
     """

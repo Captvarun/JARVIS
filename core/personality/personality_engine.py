@@ -9,7 +9,7 @@ from core.logger import logger
 class PersonalityEngine:
     """
     JARVIS Adaptive Personality & Behavior Coordinator.
-    Implements Contextual Humor Engine with explicit decision evaluation and logging.
+    Implements Contextual Humor Engine with explicit Response Mode determination and logging.
     """
     def __init__(self):
         self.state = PersonalityState()
@@ -88,8 +88,8 @@ class PersonalityEngine:
 
     def transform_response(self, text: str, intent_str: str = "conversation") -> str:
         """
-        Evaluates context and humor/sarcasm eligibility, emits structured debug logs,
-        and transforms response phrasing.
+        Evaluates context, humor/sarcasm eligibility, computes explicit Response Mode,
+        emits Requirement 12 debug logs, and transforms response phrasing.
         """
         if not text:
             return text
@@ -104,26 +104,25 @@ class PersonalityEngine:
         humor_lvl = params.get("humor", 65)
         sarcasm_lvl = params.get("sarcasm", 30)
 
-        # 2. Evaluate Decision Engine
+        # 2. Evaluate Decision Engine & Response Mode
         humor_ok = self.context_mgr.evaluate_humor_decision(context, humor_lvl, self.turns_since_humor)
         sarcasm_ok = self.context_mgr.evaluate_sarcasm_decision(context, sarcasm_lvl, self.turns_since_sarcasm)
+        response_mode = self.context_mgr.determine_response_mode(context, humor_ok, sarcasm_ok)
 
         humor_dec_str = "ENABLED" if humor_ok else "SUPPRESSED"
         sarcasm_dec_str = "ENABLED" if sarcasm_ok else "SUPPRESSED"
 
-        # 3. Emit Requirement 14 Structured Debug Logs
+        # 3. Emit Requirement 12 Structured Debug Logs
         events.log_emitted.emit("personality", f"Profile: {self.state.active_profile} | Humor: {humor_lvl}% | Sarcasm: {sarcasm_lvl}%")
         events.log_emitted.emit("personality", f"Context: {context}")
         events.log_emitted.emit("personality", f"Humor decision: {humor_dec_str}")
         events.log_emitted.emit("personality", f"Sarcasm decision: {sarcasm_dec_str}")
+        events.log_emitted.emit("personality", f"Response mode: {response_mode}")
+        events.log_emitted.emit("personality", "Response generation: CONTEXTUAL")
 
         res = text.strip()
 
-        # If humor & sarcasm are SUPPRESSED, return direct clean answer
-        if not humor_ok and not sarcasm_ok:
-            return res
-
-        # Apply subtle phrasing variation if ENABLED
+        # Apply phrasing variation based on Response Mode
         if context == "GREETING" and (humor_ok or sarcasm_ok):
             greetings = [
                 "Hey, Varun. Ready when you are.",

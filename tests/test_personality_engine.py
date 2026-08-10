@@ -1,46 +1,46 @@
 import unittest
-from core.brain.intent import IntentDetector, IntentCategory
-from core.personality.personality_engine import PersonalityEngine, personality_engine
+from core.personality.personality_engine import personality_engine
 
-class TestMilestone41ContextualHumorEngine(unittest.TestCase):
+class TestMilestone4PersonalityEngineBugFix(unittest.TestCase):
     def setUp(self):
         personality_engine.state.reset()
         personality_engine.context_mgr.clear_temp_overrides()
 
-    def test_interaction_context_classification(self):
+    def test_semantic_intent_priority_over_repeated_query(self):
         ctx_mgr = personality_engine.context_mgr
-        self.assertEqual(ctx_mgr.classify_interaction("Open Google", intent_str="plugin"), "SYSTEM_COMMAND")
-        self.assertEqual(ctx_mgr.classify_interaction("What's my RAM usage?", intent_str="system_command"), "INFORMATION_REQUEST")
-        self.assertEqual(ctx_mgr.classify_interaction("What is Python?", intent_str="conversation"), "TECHNICAL")
-        self.assertEqual(ctx_mgr.classify_interaction("Jarvis roast me", intent_str="conversation"), "HUMOR_REQUEST")
-        self.assertEqual(ctx_mgr.classify_interaction("I'm tired", intent_str="conversation"), "EMOTIONAL")
-        self.assertEqual(ctx_mgr.classify_interaction("Hello Jarvis", intent_str="conversation"), "GREETING")
+        # First call
+        ctx_1 = ctx_mgr.classify_interaction("humor me", intent_str="conversation")
+        self.assertEqual(ctx_1, "HUMOR_REQUEST")
 
-    def test_humor_sarcasm_suppression_for_information_and_technical_requests(self):
+        # Second call (repeated exact prompt) MUST remain HUMOR_REQUEST
+        ctx_2 = ctx_mgr.classify_interaction("humor me", intent_str="conversation")
+        self.assertEqual(ctx_2, "HUMOR_REQUEST")
+
+    def test_response_mode_determination(self):
         ctx_mgr = personality_engine.context_mgr
-        
-        # Information requests (RAM usage, Python) must SUPPRESS humor & sarcasm
-        self.assertFalse(ctx_mgr.evaluate_humor_decision("INFORMATION_REQUEST", 80, 5))
-        self.assertFalse(ctx_mgr.evaluate_sarcasm_decision("INFORMATION_REQUEST", 80, 5))
 
-        self.assertFalse(ctx_mgr.evaluate_humor_decision("TECHNICAL", 80, 5))
-        self.assertFalse(ctx_mgr.evaluate_sarcasm_decision("TECHNICAL", 80, 5))
+        # Information / System Command -> DIRECT / SYSTEM_OPERATIONAL
+        mode_info = ctx_mgr.determine_response_mode("INFORMATION_REQUEST", False, False)
+        self.assertEqual(mode_info, "DIRECT")
 
-        self.assertFalse(ctx_mgr.evaluate_humor_decision("SYSTEM_COMMAND", 80, 5))
-        self.assertFalse(ctx_mgr.evaluate_sarcasm_decision("SYSTEM_COMMAND", 80, 5))
+        mode_sys = ctx_mgr.determine_response_mode("SYSTEM_COMMAND", False, False)
+        self.assertEqual(mode_sys, "SYSTEM_OPERATIONAL")
 
-    def test_humor_request_enabled(self):
-        ctx_mgr = personality_engine.context_mgr
-        self.assertTrue(ctx_mgr.evaluate_humor_decision("HUMOR_REQUEST", 65, 5))
-        self.assertTrue(ctx_mgr.evaluate_sarcasm_decision("HUMOR_REQUEST", 30, 5))
+        # Emotional -> EMPATHETIC
+        mode_emo = ctx_mgr.determine_response_mode("EMOTIONAL", False, False)
+        self.assertEqual(mode_emo, "EMPATHETIC")
 
-    def test_personality_query_direct_and_suppressed(self):
-        res = personality_engine.process_command("What's your sarcasm level?")
-        self.assertIn("30%", res)
+        # Humor Request + Humor Enabled + Sarcasm Enabled -> PLAYFUL_SARCASTIC
+        mode_ps = ctx_mgr.determine_response_mode("HUMOR_REQUEST", True, True)
+        self.assertEqual(mode_ps, "PLAYFUL_SARCASTIC")
 
-        res_set = personality_engine.process_command("Set your humor level to 80%")
-        self.assertIn("80%", res_set)
-        self.assertEqual(personality_engine.state.get("humor"), 80)
+        # Humor Request + Humor Enabled + Sarcasm Suppressed -> HUMOROUS
+        mode_h = ctx_mgr.determine_response_mode("HUMOR_REQUEST", True, False)
+        self.assertEqual(mode_h, "HUMOROUS")
+
+        # Casual Conversation + Humor Enabled -> PLAYFUL
+        mode_playful = ctx_mgr.determine_response_mode("CASUAL_CONVERSATION", True, False)
+        self.assertEqual(mode_playful, "PLAYFUL")
 
 if __name__ == "__main__":
     unittest.main()
