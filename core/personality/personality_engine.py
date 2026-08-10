@@ -9,29 +9,24 @@ from core.logger import logger
 class PersonalityEngine:
     """
     JARVIS Adaptive Personality & Behavior Coordinator.
-    Implements Context Classification, Frequency Cooldown, Novelty Memory,
-    and Answer-First Phrasing Transformations without repetitive hardcoded jokes.
+    Implements Contextual Humor Engine with explicit decision evaluation and logging.
     """
     def __init__(self):
         self.state = PersonalityState()
         self.parser = PersonalityParser()
         self.context_mgr = PersonalityContextManager()
 
-        # Conversation & Cooldown Counters
         self.turn_count: int = 0
         self.turns_since_humor: int = 10
         self.turns_since_sarcasm: int = 10
-
-        # Novelty Phrase Memory (Bounded Window)
         self.recent_phrases_history: List[str] = []
-        self.max_novelty_window: int = 20
 
     def process_command(self, prompt: str) -> str:
         """Parses and executes a natural language personality command."""
         parsed = self.parser.parse(prompt)
         cmd_type = parsed.get("type")
 
-        # 1. Personality Query (Direct Answer First)
+        # 1. Personality Query
         if cmd_type == "GET_PERSONALITY":
             param = parsed.get("param")
             if param:
@@ -55,7 +50,7 @@ class PersonalityEngine:
                 events.log_emitted.emit("personality", f"Applied profile preset: {prof}")
                 return f"Done. Switched to {prof} mode."
 
-        # 4. Temporary Conversational Overrides
+        # 4. Temporary Overrides
         if cmd_type == "TEMP_OVERRIDE":
             override_type = parsed.get("override_type")
             if override_type == "SERIOUS":
@@ -72,7 +67,7 @@ class PersonalityEngine:
                 events.log_emitted.emit("personality", "Temporary context override: VERBOSE")
                 return "Understood. Providing detailed explanations."
 
-        # 5. Parameter Modifications (Absolute & Relative)
+        # 5. Parameter Modifications
         if cmd_type == "MODIFY_PERSONALITY":
             param = parsed.get("param")
             mode = parsed.get("mode")
@@ -93,8 +88,8 @@ class PersonalityEngine:
 
     def transform_response(self, text: str, intent_str: str = "conversation") -> str:
         """
-        Transforms response phrasing based on context classification, personality level,
-        cooldown counters, and novelty memory.
+        Evaluates context and humor/sarcasm eligibility, emits structured debug logs,
+        and transforms response phrasing.
         """
         if not text:
             return text
@@ -103,82 +98,42 @@ class PersonalityEngine:
         self.turns_since_humor += 1
         self.turns_since_sarcasm += 1
 
-        # Classify context
-        context = self.context_mgr.classify_context(text, intent_str)
-        params = self.context_mgr.get_effective_params(self.state.get_all_params())
+        # 1. Classify Context
+        context = self.context_mgr.classify_interaction(text, intent_str)
+        params = self.state.get_all_params()
+        humor_lvl = params.get("humor", 65)
+        sarcasm_lvl = params.get("sarcasm", 30)
+
+        # 2. Evaluate Decision Engine
+        humor_ok = self.context_mgr.evaluate_humor_decision(context, humor_lvl, self.turns_since_humor)
+        sarcasm_ok = self.context_mgr.evaluate_sarcasm_decision(context, sarcasm_lvl, self.turns_since_sarcasm)
+
+        humor_dec_str = "ENABLED" if humor_ok else "SUPPRESSED"
+        sarcasm_dec_str = "ENABLED" if sarcasm_ok else "SUPPRESSED"
+
+        # 3. Emit Requirement 14 Structured Debug Logs
+        events.log_emitted.emit("personality", f"Profile: {self.state.active_profile} | Humor: {humor_lvl}% | Sarcasm: {sarcasm_lvl}%")
+        events.log_emitted.emit("personality", f"Context: {context}")
+        events.log_emitted.emit("personality", f"Humor decision: {humor_dec_str}")
+        events.log_emitted.emit("personality", f"Sarcasm decision: {sarcasm_dec_str}")
 
         res = text.strip()
 
-        # Strict Zero-Joke contexts: Return direct, clean response immediately!
-        if context in ("PERSONALITY_MANAGEMENT", "SYSTEM_STATUS", "INFORMATIONAL", "SERIOUS", "CRITICAL", "ERROR"):
+        # If humor & sarcasm are SUPPRESSED, return direct clean answer
+        if not humor_ok and not sarcasm_ok:
             return res
 
-        # Check Eligibility for Optional Conversational Flavoring
-        allow_humor = self.context_mgr.should_allow_humor(context, params.get("humor", 65), self.turns_since_humor)
-        allow_sarcasm = self.context_mgr.should_allow_sarcasm(context, params.get("sarcasm", 30), self.turns_since_sarcasm)
-
-        # Varied Greeting Phrases Bank (No Repetition!)
-        if context == "GREETING":
-            greetings_bank = [
-                "Hey, Varun. Good to hear from you.",
-                "Hello, Varun. Systems are online and ready.",
+        # Apply subtle phrasing variation if ENABLED
+        if context == "GREETING" and (humor_ok or sarcasm_ok):
+            greetings = [
+                "Hey, Varun. Ready when you are.",
                 "Good day, Varun. All systems operational.",
-                "Greetings, Varun. How can I assist you?",
-                "Hey, Varun. Ready when you are."
+                "Greetings, Varun. How can I assist you today?"
             ]
-            
-            sarcastic_greetings = [
-                "Good morning, Varun. Another day, another attempt to keep things running smoothly.",
-                "Hey, Varun. Systems are online and behaving themselves for once.",
-                "Hello, Varun. Machine components remain cooperative."
-            ]
-
-            if allow_sarcasm:
-                chosen = self._select_novel_phrase(sarcastic_greetings)
-                self.turns_since_sarcasm = 0
-                return chosen
-            else:
-                chosen = self._select_novel_phrase(greetings_bank)
-                return chosen
-
-        # Handle Explicit Joke Requests
-        if context == "JOKE_REQUEST":
-            jokes_bank = [
-                "Why do programmers prefer dark mode? Because light attracts bugs.",
-                "There are 10 types of people in the world: those who understand binary, and those who don't.",
-                "Hardware is the part of a computer that you can kick when the software crashes."
-            ]
-            chosen = self._select_novel_phrase(jokes_bank)
+            res = random.choice(greetings)
             self.turns_since_humor = 0
-            return chosen
 
         return res
-
-    def _select_novel_phrase(self, phrase_candidates: List[str]) -> str:
-        """Selects a phrase candidate that has NOT been used recently."""
-        available = [p for p in phrase_candidates if p not in self.recent_phrases_history]
-        if not available:
-            # Clear history if exhausted
-            available = phrase_candidates
-
-        chosen = random.choice(available)
-        self.recent_phrases_history.append(chosen)
-
-        # Keep sliding novelty window capped at max_novelty_window
-        if len(self.recent_phrases_history) > self.max_novelty_window:
-            self.recent_phrases_history.pop(0)
-
-        return chosen
-
-    def get_llm_context(self) -> Dict[str, Any]:
-        """Exposes clean representation for future LLM integration."""
-        return {
-            "active_profile": self.state.active_profile,
-            "parameters": self.state.get_all_params(),
-            "context_tag": self.context_mgr.context_tag,
-            "turns_since_humor": self.turns_since_humor,
-            "turns_since_sarcasm": self.turns_since_sarcasm
-        }
 
 # Global Personality Engine Singleton
 personality_engine = PersonalityEngine()

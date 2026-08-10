@@ -3,117 +3,113 @@ from typing import Dict, Any, Optional
 
 class PersonalityContextManager:
     """
-    Context Classifier & Eligibility Decision Engine.
-    Determines situation context (GREETING, CASUAL_CONVERSATION, SYSTEM_STATUS, PERSONALITY_MANAGEMENT, SERIOUS, CRITICAL)
-    and enforces strict humor/sarcasm eligibility rules, temporary overrides, and context suppression.
+    Context Classifier & Behavioral Decision Engine for Milestone 4.1.
+    Classifies interaction types into:
+    SYSTEM_COMMAND, INFORMATION_REQUEST, CASUAL_CONVERSATION, GREETING,
+    HUMOR_REQUEST, EMOTIONAL, TECHNICAL, REPEATED_QUERY, UNKNOWN.
     """
     def __init__(self):
-        self.context_tag: str = "NORMAL"
+        self.context_tag: str = "UNKNOWN"
+        self.last_prompt: str = ""
         self.temp_overrides: Dict[str, Any] = {}
 
-    def classify_context(self, prompt: str, intent_str: str) -> str:
-        """Classifies prompt and intent into precise situational contexts."""
+    def classify_interaction(self, prompt: str, intent_str: str = "conversation") -> str:
+        """Classifies interaction into exact Milestone 4.1 categories."""
         p_lower = prompt.lower().strip()
 
-        # 1. Personality Management & Queries (Zero Jokes Rule)
-        if any(tag in intent_str for tag in ["personality", "get_personality", "modify_personality", "set_personality"]):
-            self.context_tag = "PERSONALITY_MANAGEMENT"
+        # Check for Repeated Query
+        if p_lower == self.last_prompt and p_lower:
+            self.context_tag = "REPEATED_QUERY"
+            return self.context_tag
+        self.last_prompt = p_lower
+
+        # 1. Explicit Humor / Roast Requests
+        if any(w in p_lower for w in ["roast me", "tell me a joke", "say something funny", "make me laugh"]):
+            self.context_tag = "HUMOR_REQUEST"
             return self.context_tag
 
-        # 2. Serious, Emotional, Security, or Emergency Contexts
-        if any(w in p_lower for w in ["crash", "error", "fault", "failed", "died", "broken", "sad", "die", "emergency", "help", "serious", "bad"]):
-            self.context_tag = "SERIOUS"
+        # 2. Operational / System Commands
+        if intent_str in ("plugin", "application_action") or any(w in p_lower for w in ["open google", "search web", "launch"]):
+            self.context_tag = "SYSTEM_COMMAND"
             return self.context_tag
 
-        # 3. Explicit Joke Request
-        if "tell me a joke" in p_lower or "say something funny" in p_lower:
-            self.context_tag = "JOKE_REQUEST"
+        # 3. Technical Knowledge Queries
+        if any(w in p_lower for w in ["what is python", "explain python", "how does python work", "define ", "code"]):
+            self.context_tag = "TECHNICAL"
             return self.context_tag
 
-        # 4. Greetings & Casual Small Talk
-        if any(w in p_lower for w in ["hello", "hi", "hey", "good morning", "good evening", "greetings", "howdy"]):
+        # 4. System Telemetry & Factual Information Requests
+        if intent_str in ("system_command", "information_request", "get_time") or any(w in p_lower for w in ["ram usage", "cpu usage", "system status", "disk", "uptime", "clock", "what time"]):
+            self.context_tag = "INFORMATION_REQUEST"
+            return self.context_tag
+
+        # 5. Emotional / Serious Inputs
+        if any(w in p_lower for w in ["tired", "exhausted", "stressed", "sad", "unhappy", "depressed", "emergency", "hurt"]):
+            self.context_tag = "EMOTIONAL"
+            return self.context_tag
+
+        # 6. Greetings
+        if any(w in p_lower for w in ["hello", "hi", "hey", "good morning", "good evening", "greetings"]):
             self.context_tag = "GREETING"
             return self.context_tag
 
-        # 5. System Commands & Technical Status
-        if any(w in p_lower for w in ["system status", "cpu", "ram", "disk", "uptime", "telemetry", "specs", "open google", "search"]):
-            self.context_tag = "SYSTEM_STATUS"
+        # 7. Personality Query / Management
+        if any(w in p_lower for w in ["sarcasm level", "humor level", "personality", "settings"]):
+            self.context_tag = "INFORMATION_REQUEST"
             return self.context_tag
 
-        # 6. Informational Queries
-        if any(w in p_lower for w in ["what time", "clock", "date", "my project"]):
-            self.context_tag = "INFORMATIONAL"
+        # 8. Casual Conversation
+        if intent_str == "conversation":
+            self.context_tag = "CASUAL_CONVERSATION"
             return self.context_tag
 
-        self.context_tag = "CASUAL_CONVERSATION"
+        self.context_tag = "UNKNOWN"
         return self.context_tag
 
+    def evaluate_humor_decision(self, context: str, humor_level: int, turns_since_last: int) -> bool:
+        """
+        Determines humor decision: ENABLED or SUPPRESSED.
+        Humor is SUPPRESSED for SYSTEM_COMMAND, TECHNICAL, INFORMATION_REQUEST, EMOTIONAL.
+        """
+        if context in ("SYSTEM_COMMAND", "TECHNICAL", "INFORMATION_REQUEST", "EMOTIONAL"):
+            return False
+
+        if "suppress_humor" in self.temp_overrides and self.temp_overrides["suppress_humor"]:
+            return False
+
+        if context == "HUMOR_REQUEST":
+            return True
+
+        if humor_level <= 0:
+            return False
+
+        # Probabilistic decision based on humor level %
+        prob = (humor_level / 100.0) * 0.5
+        return random.random() < prob
+
+    def evaluate_sarcasm_decision(self, context: str, sarcasm_level: int, turns_since_last: int) -> bool:
+        """
+        Determines sarcasm decision: ENABLED or SUPPRESSED.
+        Evaluated independently from humor.
+        """
+        if context in ("SYSTEM_COMMAND", "TECHNICAL", "INFORMATION_REQUEST", "EMOTIONAL"):
+            return False
+
+        if "suppress_sarcasm" in self.temp_overrides and self.temp_overrides["suppress_sarcasm"]:
+            return False
+
+        if context == "HUMOR_REQUEST" and sarcasm_level > 10:
+            return True
+
+        if sarcasm_level <= 0:
+            return False
+
+        prob = (sarcasm_level / 100.0) * 0.4
+        return random.random() < prob
+
     def set_temp_override(self, param: str, val: Any):
-        """Sets temporary conversational override for current session."""
         self.temp_overrides[param.lower()] = val
 
     def clear_temp_overrides(self):
-        """Clears temporary conversational overrides."""
         self.temp_overrides.clear()
-        self.context_tag = "NORMAL"
-
-    def should_allow_humor(self, context: str, humor_level: int, turns_since_last: int) -> bool:
-        """
-        Calculates humor eligibility based on context, level, and turns since last humor.
-        Never injects random jokes into Personality Queries, System Commands, or Serious contexts.
-        """
-        if context in ("PERSONALITY_MANAGEMENT", "SYSTEM_STATUS", "INFORMATIONAL", "SERIOUS", "CRITICAL", "ERROR"):
-            return False
-
-        if "suppress_humor" in self.temp_overrides and self.temp_overrides["suppress_humor"]:
-            return False
-
-        if context == "JOKE_REQUEST":
-            return True
-
-        if humor_level <= 10:
-            return False
-
-        # Enforce cooldown: require at least 2 turns between humor remarks
-        if turns_since_last < 2:
-            return False
-
-        # Eligibility threshold
-        prob = (humor_level / 100.0) * 0.4
-        return random.random() < prob
-
-    def should_allow_sarcasm(self, context: str, sarcasm_level: int, turns_since_last: int) -> bool:
-        """
-        Calculates sarcasm eligibility.
-        Sarcasm is highly selective and reserved ONLY for casual greetings or explicit small talk.
-        """
-        if context not in ("GREETING", "CASUAL_CONVERSATION", "SMALL_TALK"):
-            return False
-
-        if "suppress_sarcasm" in self.temp_overrides and self.temp_overrides["suppress_sarcasm"]:
-            return False
-
-        if sarcasm_level <= 20:
-            return False
-
-        # Enforce cooldown: require at least 3 turns between sarcasm remarks
-        if turns_since_last < 3:
-            return False
-
-        prob = (sarcasm_level / 100.0) * 0.3
-        return random.random() < prob
-
-    def get_effective_params(self, base_params: Dict[str, int]) -> Dict[str, int]:
-        """Computes effective runtime parameters considering context suppression."""
-        effective = base_params.copy()
-
-        if self.context_tag in ("SERIOUS", "DISTRESS", "SYSTEM_ERROR", "CRITICAL", "PERSONALITY_MANAGEMENT"):
-            effective["humor"] = min(effective["humor"], 5)
-            effective["sarcasm"] = 0
-
-        if "suppress_humor" in self.temp_overrides and self.temp_overrides["suppress_humor"]:
-            effective["humor"] = 0
-        if "suppress_sarcasm" in self.temp_overrides and self.temp_overrides["suppress_sarcasm"]:
-            effective["sarcasm"] = 0
-
-        return effective
+        self.context_tag = "UNKNOWN"

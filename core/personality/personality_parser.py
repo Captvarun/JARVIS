@@ -18,7 +18,7 @@ class PersonalityParser:
             "current settings", "current personality", "how sarcastic are you", "how humorous are you",
             "how formal are you", "sarcasm level", "humor level", "empathy level", "formality level",
             "energy level", "verbosity level", "confidence level", "friendliness level", "personality parameters"
-        ]):
+        ]) and not ("set" in p or "change" in p or "increase" in p or "reduce" in p):
             res["type"] = "GET_PERSONALITY"
             for param in self.PARAMS:
                 if param in p:
@@ -58,13 +58,13 @@ class PersonalityParser:
             res["override_type"] = "VERBOSE"
             return res
 
-        # 5. Absolute Set Command ("set sarcasm to 30%", "make yourself 50% formal", "set humor to 80")
-        set_match = re.search(r"(set|change|make yourself)\s+(your\s+)?(humor|sarcasm|empathy|formality|energy|verbosity|confidence|friendliness)\s+(to|=)?\s*(\d+)", p)
+        # 5. Absolute Set Command ("set sarcasm to 30%", "set your humor level to 80%", "make yourself 50% formal")
+        set_match = re.search(r"(set|change|make yourself)\s+(your\s+)?(humor|sarcasm|empathy|formality|energy|verbosity|confidence|friendliness)(\s+level)?\s+(to|=)?\s*(\d+)", p)
         if set_match:
             res["type"] = "MODIFY_PERSONALITY"
             res["mode"] = "ABSOLUTE"
             res["param"] = set_match.group(3)
-            res["val"] = int(set_match.group(5))
+            res["val"] = int(set_match.group(6))
             return res
 
         # Turn Off Command ("turn sarcasm off")
@@ -77,11 +77,11 @@ class PersonalityParser:
             return res
 
         # 6. Relative Command ("reduce sarcasm by 20%", "increase humor by 15%")
-        rel_match = re.search(r"(increase|reduce|decrease|lower|raise)\s+(your\s+)?(humor|sarcasm|empathy|formality|energy|verbosity|confidence|friendliness)\s+by\s+(\d+)", p)
+        rel_match = re.search(r"(increase|reduce|decrease|lower|raise)\s+(your\s+)?(humor|sarcasm|empathy|formality|energy|verbosity|confidence|friendliness)(\s+level)?\s+by\s+(\d+)", p)
         if rel_match:
             action = rel_match.group(1)
             param = rel_match.group(3)
-            delta = int(rel_match.group(4))
+            delta = int(rel_match.group(5))
             if action in ("reduce", "decrease", "lower"):
                 delta = -delta
             res["type"] = "MODIFY_PERSONALITY"
