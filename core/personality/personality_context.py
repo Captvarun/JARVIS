@@ -1,9 +1,10 @@
+import re
 import random
 from typing import Dict, Any, Optional
 
 class PersonalityContextManager:
     """
-    Context Classifier & Behavioral Decision Engine for Milestone 4.
+    Context Classifier & Behavioral Decision Engine for Milestone 5.
     Prioritizes semantic intent above REPEATED_QUERY and determines explicit Response Modes.
     """
     def __init__(self):
@@ -13,7 +14,7 @@ class PersonalityContextManager:
 
     def classify_interaction(self, prompt: str, intent_str: str = "conversation") -> str:
         """
-        Classifies interaction with semantic priority:
+        Classifies interaction with word boundary precision:
         1. HUMOR_REQUEST
         2. SYSTEM_COMMAND
         3. TECHNICAL
@@ -27,10 +28,7 @@ class PersonalityContextManager:
         p_lower = prompt.lower().strip()
 
         # 1. Explicit Humor / Roast Requests (HIGHEST PRIORITY)
-        if any(w in p_lower for w in [
-            "roast me", "roast", "tell me a joke", "joke", "humor me", 
-            "make me laugh", "say something funny", "make me laugh jarvis"
-        ]):
+        if re.search(r"\b(roast me|roast|tell me a joke|joke|humor me|make me laugh|say something funny|make me laugh jarvis)\b", p_lower):
             self.context_tag = "HUMOR_REQUEST"
             self.last_prompt = p_lower
             return self.context_tag
@@ -54,13 +52,13 @@ class PersonalityContextManager:
             return self.context_tag
 
         # 5. Emotional / Serious Inputs
-        if any(w in p_lower for w in ["tired", "exhausted", "stressed", "sad", "unhappy", "depressed", "emergency", "hurt"]):
+        if re.search(r"\b(tired|exhausted|stressed|sad|unhappy|depressed|emergency|hurt)\b", p_lower):
             self.context_tag = "EMOTIONAL"
             self.last_prompt = p_lower
             return self.context_tag
 
-        # 6. Greetings
-        if any(w in p_lower for w in ["hello", "hi", "hey", "good morning", "good evening", "greetings"]):
+        # 6. Greetings (Using exact word boundaries)
+        if re.search(r"\b(hello|hi|hey|greetings|good morning|good evening)\b", p_lower):
             self.context_tag = "GREETING"
             self.last_prompt = p_lower
             return self.context_tag

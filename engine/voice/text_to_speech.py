@@ -5,8 +5,8 @@ from core.events import events
 
 class TextToSpeechEngine:
     """
-    Native Windows Text-to-Speech Engine with real audio synthesis,
-    exact log event tracing, and non-blocking or blocking speech playback.
+    Native Windows Text-to-Speech Engine with thread-safe session tracking,
+    stale callback suppression, and serialized application state management.
     """
     def __init__(self):
         self.is_speaking = False
@@ -15,25 +15,52 @@ class TextToSpeechEngine:
         self.rate = 180
         self._speech_thread: Optional[threading.Thread] = None
 
+        self._lock = threading.Lock()
+        self._session_counter: int = 0
+        self._current_session_id: int = 0
+
     def speak(self, text: str, sync: bool = False):
         """
-        Synthesizes text to spoken audio.
-        Logs every stage: Synthesis started, Audio generated, Audio playback started, Audio playback completed.
+        Synthesizes text to spoken audio with unique session ID lifecycle management.
         """
         if not text or not self.enabled:
             return
 
-        # Stop any active speech playback
-        self.stop_speaking()
+        with self._lock:
+            if self._current_session_id != 0:
+                old_id = self._current_session_id
+                logger.info(f"[TTS] Cancelling session={old_id}")
+                logger.info(f"[TTS] Session invalidated: {old_id}")
+                events.log_emitted.emit("voice", f"[TTS] Cancelling session={old_id}")
+                events.log_emitted.emit("voice", f"[TTS] Session invalidated: {old_id}")
 
-        def _do_speak():
-            try:
+            self._session_counter += 1
+            session_id = self._session_counter
+            self._current_session_id = session_id
+
+            logger.info(f"[TTS] Session created: {session_id}")
+            events.log_emitted.emit("voice", f"[TTS] Session created: {session_id}")
+
+        def _do_speak(s_id: int):
+            with self._lock:
+                if s_id != self._current_session_id:
+                    logger.info(f"[TTS] Ignoring stale callback for session={s_id}")
+                    logger.info(f"[TTS] Current session={self._current_session_id}")
+                    events.log_emitted.emit("voice", f"[TTS] Ignoring stale callback for session={s_id}")
+                    events.log_emitted.emit("voice", f"[TTS] Current session={self._current_session_id}")
+                    return
                 self.is_speaking = True
-                logger.info("[TTS] Synthesis started")
-                events.log_emitted.emit("voice", "[TTS] Synthesis started")
+                logger.info("[State] SPEAKING")
                 events.voice_state_changed.emit("SPEAKING")
 
-                # Ensure Windows COM COM-thread initialization
+            try:
+                logger.info(f"[TTS] Playback started: session={s_id}")
+                events.log_emitted.emit("voice", f"[TTS] Playback started: session={s_id}")
+
+                logger.info("[TTS] Synthesis started")
+                events.log_emitted.emit("voice", "[TTS] Synthesis started")
+
+                # Ensure Windows COM-thread initialization
                 try:
                     import pythoncom
                     pythoncom.CoInitialize()
@@ -47,21 +74,14 @@ class TextToSpeechEngine:
                     
                     # Set Volume (0 to 100) and Rate (-10 to 10)
                     speaker.Volume = int(self.volume)
-                    # Convert rate 180 (words/min) to SAPI5 scale (-10 to 10)
                     sapi_rate = int((self.rate - 180) / 15)
                     speaker.Rate = max(-10, min(10, sapi_rate))
 
                     logger.info("[TTS] Audio generated")
                     events.log_emitted.emit("voice", "[TTS] Audio generated")
 
-                    logger.info("[TTS] Audio playback started")
-                    events.log_emitted.emit("voice", "[TTS] Audio playback started")
-
-                    # Synchronous SAPI5 Speak call (blocks until playback finishes)
+                    # Synchronous SAPI5 Speak call
                     speaker.Speak(text)
-
-                    logger.info("[TTS] Audio playback completed")
-                    events.log_emitted.emit("voice", "[TTS] Audio playback completed")
 
                 except Exception as ex1:
                     # Fallback: pyttsx3
@@ -74,14 +94,8 @@ class TextToSpeechEngine:
                         logger.info("[TTS] Audio generated")
                         events.log_emitted.emit("voice", "[TTS] Audio generated")
 
-                        logger.info("[TTS] Audio playback started")
-                        events.log_emitted.emit("voice", "[TTS] Audio playback started")
-
                         engine.say(text)
                         engine.runAndWait()
-
-                        logger.info("[TTS] Audio playback completed")
-                        events.log_emitted.emit("voice", "[TTS] Audio playback completed")
                     except Exception as ex2:
                         logger.error(f"[TTS] Playback ERROR: {ex2}")
                         events.log_emitted.emit("voice", f"[TTS] Playback ERROR: {ex2}")
@@ -90,8 +104,20 @@ class TextToSpeechEngine:
                 logger.error(f"[TTS] Playback ERROR: {e}")
                 events.log_emitted.emit("voice", f"[TTS] Playback ERROR: {e}")
             finally:
-                self.is_speaking = False
-                events.voice_state_changed.emit("IDLE")
+                with self._lock:
+                    if s_id != self._current_session_id:
+                        logger.info(f"[TTS] Ignoring stale callback for session={s_id}")
+                        logger.info(f"[TTS] Current session={self._current_session_id}")
+                        events.log_emitted.emit("voice", f"[TTS] Ignoring stale callback for session={s_id}")
+                        events.log_emitted.emit("voice", f"[TTS] Current session={self._current_session_id}")
+                    else:
+                        self.is_speaking = False
+                        self._current_session_id = 0
+                        logger.info(f"[TTS] Playback completed: session={s_id}")
+                        logger.info("[State] IDLE")
+                        events.log_emitted.emit("voice", f"[TTS] Playback completed: session={s_id}")
+                        events.voice_state_changed.emit("IDLE")
+
                 try:
                     import pythoncom
                     pythoncom.CoUninitialize()
@@ -99,14 +125,22 @@ class TextToSpeechEngine:
                     pass
 
         if sync:
-            _do_speak()
+            _do_speak(session_id)
         else:
-            self._speech_thread = threading.Thread(target=_do_speak, daemon=True)
+            self._speech_thread = threading.Thread(target=_do_speak, args=(session_id,), daemon=True)
             self._speech_thread.start()
 
     def stop_speaking(self):
-        """Immediately stops active speech playback."""
-        if self.is_speaking:
-            logger.info("[TTS] Stopping active speech playback.")
-            self.is_speaking = False
-            events.voice_state_changed.emit("IDLE")
+        """Immediately stops active speech playback and invalidates the session."""
+        with self._lock:
+            if self._current_session_id != 0:
+                old_id = self._current_session_id
+                logger.info("[TTS] Stopping active speech playback.")
+                logger.info(f"[TTS] Cancelling session={old_id}")
+                logger.info(f"[TTS] Session invalidated: {old_id}")
+                events.log_emitted.emit("voice", f"[TTS] Cancelling session={old_id}")
+                events.log_emitted.emit("voice", f"[TTS] Session invalidated: {old_id}")
+                self._current_session_id = 0
+                self.is_speaking = False
+                logger.info("[State] IDLE")
+                events.voice_state_changed.emit("IDLE")
