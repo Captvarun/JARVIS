@@ -23,18 +23,22 @@ class IntentDetector:
         if not p:
             return IntentCategory.UNKNOWN
 
-        # Personality Intents
-        if any(w in p for w in ["what's your personality", "what is your personality", "show your personality", "current personality"]):
+        # Personality Queries
+        if any(w in p for w in ["what's your personality", "what is your personality", "show your personality",
+                                "current settings", "current personality", "how sarcastic are you", "how humorous are you"]):
             return IntentCategory.GET_PERSONALITY
 
-        if "reset" in p and "personality" in p:
+        # Personality Reset
+        if ("reset" in p and "personality" in p) or "default personality" in p:
             return IntentCategory.RESET_PERSONALITY
 
-        if any(w in p for w in ["professional mode", "companion mode", "sarcastic mode", "focus mode", "switch to", "profile"]):
+        # Profile Switch
+        if any(w in p for w in ["professional mode", "companion mode", "sarcastic mode", "focus mode", "switch to", "profile", "go into"]):
             return IntentCategory.SET_PERSONALITY_PROFILE
 
-        if any(w in p for w in ["set ", "reduce ", "increase ", "make yourself ", "be more ", "be less ", "turn ", "sarcasm", "humor", "formality", "empathy", "verbosity"]):
-            if any(param in p for param in ["sarcasm", "humor", "formality", "empathy", "verbosity", "energy", "confidence"]):
+        # Personality Parameter Modification
+        if any(w in p for w in ["set ", "reduce ", "increase ", "make yourself ", "be more ", "be less ", "turn ", "stop being ", "calm down"]):
+            if any(param in p for param in ["sarcasm", "humor", "formality", "empathy", "verbosity", "energy", "confidence", "friendliness", "formal", "funny", "humorous", "sarcastic", "friendly", "concise", "detailed"]):
                 return IntentCategory.MODIFY_PERSONALITY
 
         # System Command Intent

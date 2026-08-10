@@ -1,1 +1,1 @@
-# Adaptive Personality Engine Package
+# JARVIS Adaptive Personality & Behavior Engine Package
