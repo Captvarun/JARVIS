@@ -13,13 +13,17 @@ class PersonalityParser:
         res = {"type": "UNKNOWN", "param": None, "val": None, "profile": None, "raw": prompt}
 
         # 1. Personality Queries
-        if any(w in p for w in ["what's your personality", "what is your personality", "show your personality",
-                                "current settings", "current personality", "how sarcastic are you", "how humorous are you"]):
+        if any(w in p for w in [
+            "what's your personality", "what is your personality", "show your personality",
+            "current settings", "current personality", "how sarcastic are you", "how humorous are you",
+            "how formal are you", "sarcasm level", "humor level", "empathy level", "formality level",
+            "energy level", "verbosity level", "confidence level", "friendliness level", "personality parameters"
+        ]):
             res["type"] = "GET_PERSONALITY"
-            if "sarcastic" in p:
-                res["param"] = "sarcasm"
-            elif "humorous" in p or "funny" in p:
-                res["param"] = "humor"
+            for param in self.PARAMS:
+                if param in p:
+                    res["param"] = param
+                    break
             return res
 
         # 2. Reset / Default Personality
@@ -55,12 +59,12 @@ class PersonalityParser:
             return res
 
         # 5. Absolute Set Command ("set sarcasm to 30%", "make yourself 50% formal", "set humor to 80")
-        set_match = re.search(r"(set|change|make yourself)\s+(humor|sarcasm|empathy|formality|energy|verbosity|confidence|friendliness)\s+(to|=)?\s*(\d+)", p)
+        set_match = re.search(r"(set|change|make yourself)\s+(your\s+)?(humor|sarcasm|empathy|formality|energy|verbosity|confidence|friendliness)\s+(to|=)?\s*(\d+)", p)
         if set_match:
             res["type"] = "MODIFY_PERSONALITY"
             res["mode"] = "ABSOLUTE"
-            res["param"] = set_match.group(2)
-            res["val"] = int(set_match.group(4))
+            res["param"] = set_match.group(3)
+            res["val"] = int(set_match.group(5))
             return res
 
         # Turn Off Command ("turn sarcasm off")

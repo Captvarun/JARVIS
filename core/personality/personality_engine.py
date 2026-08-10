@@ -1,4 +1,5 @@
-from typing import Dict, Any, Optional
+import random
+from typing import Dict, Any, List, Optional
 from core.personality.personality_state import PersonalityState
 from core.personality.personality_parser import PersonalityParser
 from core.personality.personality_context import PersonalityContextManager
@@ -8,20 +9,29 @@ from core.logger import logger
 class PersonalityEngine:
     """
     JARVIS Adaptive Personality & Behavior Coordinator.
-    Handles command parsing, state updates, SQLite persistence, context awareness,
-    and Response Transformation (modifying actual output phrasing based on personality).
+    Implements Context Classification, Frequency Cooldown, Novelty Memory,
+    and Answer-First Phrasing Transformations without repetitive hardcoded jokes.
     """
     def __init__(self):
         self.state = PersonalityState()
         self.parser = PersonalityParser()
         self.context_mgr = PersonalityContextManager()
 
+        # Conversation & Cooldown Counters
+        self.turn_count: int = 0
+        self.turns_since_humor: int = 10
+        self.turns_since_sarcasm: int = 10
+
+        # Novelty Phrase Memory (Bounded Window)
+        self.recent_phrases_history: List[str] = []
+        self.max_novelty_window: int = 20
+
     def process_command(self, prompt: str) -> str:
         """Parses and executes a natural language personality command."""
         parsed = self.parser.parse(prompt)
         cmd_type = parsed.get("type")
 
-        # 1. Personality Query
+        # 1. Personality Query (Direct Answer First)
         if cmd_type == "GET_PERSONALITY":
             param = parsed.get("param")
             if param:
@@ -36,14 +46,14 @@ class PersonalityEngine:
             self.state.reset()
             self.context_mgr.clear_temp_overrides()
             events.log_emitted.emit("personality", "Personality state reset to default COMPANION profile.")
-            return "Understood. Personality state reset to default COMPANION profile."
+            return "Done. Personality state reset to default COMPANION profile."
 
         # 3. Profile Switching
         if cmd_type == "SET_PERSONALITY_PROFILE":
             prof = parsed.get("profile")
             if prof and self.state.set_profile(prof):
                 events.log_emitted.emit("personality", f"Applied profile preset: {prof}")
-                return f"Switched to {prof} mode."
+                return f"Done. Switched to {prof} mode."
 
         # 4. Temporary Conversational Overrides
         if cmd_type == "TEMP_OVERRIDE":
@@ -51,7 +61,7 @@ class PersonalityEngine:
             if override_type == "SERIOUS":
                 self.context_mgr.set_temp_override("suppress_humor", True)
                 self.context_mgr.set_temp_override("suppress_sarcasm", True)
-                events.log_emitted.emit("personality", "Temporary context override: SERIOUS (Humor & Sarcasm suppressed)")
+                events.log_emitted.emit("personality", "Temporary context override: SERIOUS")
                 return "Understood. Operating in serious mode for this session."
             elif override_type == "CONCISE":
                 self.context_mgr.set_temp_override("verbosity", 20)
@@ -77,82 +87,97 @@ class PersonalityEngine:
                 new_val = self.state.get(param)
 
                 events.log_emitted.emit("personality", f"Modification detected: {param} {old_val}% -> {new_val}% (Profile: {self.state.active_profile})")
-                return f"{param.capitalize()} updated to {new_val}%."
+                return f"Done. {param.capitalize()} is now set to {new_val}%."
 
-        return f"Personality updated. Current Profile: {self.state.active_profile}."
+        return f"Done. Current Profile: {self.state.active_profile}."
 
-    def transform_response(self, text: str, context_tag: str = "NORMAL") -> str:
+    def transform_response(self, text: str, intent_str: str = "conversation") -> str:
         """
-        Applies Personality Response Transformation to AI output text.
-        Modifies phrasing, tone, verbosity, formality, humor, sarcasm, and friendliness.
+        Transforms response phrasing based on context classification, personality level,
+        cooldown counters, and novelty memory.
         """
         if not text:
             return text
 
-        self.context_mgr.set_context(context_tag)
-        base_params = self.state.get_all_params()
-        params = self.context_mgr.get_effective_params(base_params)
+        self.turn_count += 1
+        self.turns_since_humor += 1
+        self.turns_since_sarcasm += 1
+
+        # Classify context
+        context = self.context_mgr.classify_context(text, intent_str)
+        params = self.context_mgr.get_effective_params(self.state.get_all_params())
 
         res = text.strip()
 
-        # 1. Formality Transformations
-        formality = params.get("formality", 35)
-        if formality >= 75:
-            if res.startswith("Hello"):
-                res = res.replace("Hello", "Greetings")
-            elif res.startswith("Got it") or res.startswith("Done"):
-                res = "Understood. " + res
-        elif formality <= 25:
-            if "I am JARVIS" in res:
-                res = res.replace("I am JARVIS", "I'm JARVIS")
-            if "Systems are operational." in res:
-                res = res.replace("Systems are operational.", "All systems good to go.")
-            elif "Systems are operational" in res:
-                res = res.replace("Systems are operational", "All systems good to go")
+        # Strict Zero-Joke contexts: Return direct, clean response immediately!
+        if context in ("PERSONALITY_MANAGEMENT", "SYSTEM_STATUS", "INFORMATIONAL", "SERIOUS", "CRITICAL", "ERROR"):
+            return res
 
-        # 2. Verbosity Transformations
-        verbosity = params.get("verbosity", 55)
-        if verbosity <= 25:
-            # Concise: shorten response if lengthy
-            sentences = res.split(". ")
-            if len(sentences) > 1:
-                res = sentences[0] + "."
-        elif verbosity >= 80:
-            # Verbose: append detailed context if brief
-            if not res.endswith("."):
-                res += "."
-            res += " All subsystem status checks remain nominal."
+        # Check Eligibility for Optional Conversational Flavoring
+        allow_humor = self.context_mgr.should_allow_humor(context, params.get("humor", 65), self.turns_since_humor)
+        allow_sarcasm = self.context_mgr.should_allow_sarcasm(context, params.get("sarcasm", 30), self.turns_since_sarcasm)
 
-        # 3. Sarcasm & Humor Transformations (only if not suppressed by context)
-        sarcasm = params.get("sarcasm", 30)
-        humor = params.get("humor", 65)
+        # Varied Greeting Phrases Bank (No Repetition!)
+        if context == "GREETING":
+            greetings_bank = [
+                "Hey, Varun. Good to hear from you.",
+                "Hello, Varun. Systems are online and ready.",
+                "Good day, Varun. All systems operational.",
+                "Greetings, Varun. How can I assist you?",
+                "Hey, Varun. Ready when you are."
+            ]
+            
+            sarcastic_greetings = [
+                "Good morning, Varun. Another day, another attempt to keep things running smoothly.",
+                "Hey, Varun. Systems are online and behaving themselves for once.",
+                "Hello, Varun. Machine components remain cooperative."
+            ]
 
-        if sarcasm >= 75:
-            if "operational" in res.lower() or "systems" in res.lower() or "go" in res.lower():
-                if not res.endswith("."):
-                    res += "."
-                res += " Shockingly, nothing has caught fire yet."
-        elif humor >= 75 and sarcasm < 75:
-            if "operational" in res.lower() or "systems" in res.lower():
-                if not res.endswith("."):
-                    res += "."
-                res += " Machine gods are pleased."
+            if allow_sarcasm:
+                chosen = self._select_novel_phrase(sarcastic_greetings)
+                self.turns_since_sarcasm = 0
+                return chosen
+            else:
+                chosen = self._select_novel_phrase(greetings_bank)
+                return chosen
 
-        # 4. Friendliness & Empathy Transformations
-        friendliness = params.get("friendliness", 80)
-        if friendliness >= 85 and not res.startswith("Hello") and not res.startswith("Greetings") and formality < 75:
-            if not res.startswith("Sure thing"):
-                res = f"Sure thing. {res}"
+        # Handle Explicit Joke Requests
+        if context == "JOKE_REQUEST":
+            jokes_bank = [
+                "Why do programmers prefer dark mode? Because light attracts bugs.",
+                "There are 10 types of people in the world: those who understand binary, and those who don't.",
+                "Hardware is the part of a computer that you can kick when the software crashes."
+            ]
+            chosen = self._select_novel_phrase(jokes_bank)
+            self.turns_since_humor = 0
+            return chosen
 
         return res
 
+    def _select_novel_phrase(self, phrase_candidates: List[str]) -> str:
+        """Selects a phrase candidate that has NOT been used recently."""
+        available = [p for p in phrase_candidates if p not in self.recent_phrases_history]
+        if not available:
+            # Clear history if exhausted
+            available = phrase_candidates
+
+        chosen = random.choice(available)
+        self.recent_phrases_history.append(chosen)
+
+        # Keep sliding novelty window capped at max_novelty_window
+        if len(self.recent_phrases_history) > self.max_novelty_window:
+            self.recent_phrases_history.pop(0)
+
+        return chosen
+
     def get_llm_context(self) -> Dict[str, Any]:
-        """Exposes clean JSON/dict representation for future LLM integration."""
+        """Exposes clean representation for future LLM integration."""
         return {
             "active_profile": self.state.active_profile,
             "parameters": self.state.get_all_params(),
             "context_tag": self.context_mgr.context_tag,
-            "temp_overrides": self.context_mgr.temp_overrides.copy()
+            "turns_since_humor": self.turns_since_humor,
+            "turns_since_sarcasm": self.turns_since_sarcasm
         }
 
 # Global Personality Engine Singleton

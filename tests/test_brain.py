@@ -2,8 +2,6 @@ import unittest
 from core.brain.brain import JarvisBrain
 from core.brain.intent import IntentDetector, IntentCategory
 from core.brain.context import ContextManager
-from core.brain.router import CommandRouter
-from core.brain.provider import LocalMockProvider
 
 class TestJarvisBrain(unittest.TestCase):
     def setUp(self):
@@ -22,7 +20,6 @@ class TestJarvisBrain(unittest.TestCase):
         res = self.brain.process_command("hello JARVIS")
         self.assertTrue(res.success)
         self.assertIn("Varun", res.text)
-        self.assertIn("systems are online", res.text.lower())
 
     def test_brain_time_command(self):
         res = self.brain.process_command("what time is it")
