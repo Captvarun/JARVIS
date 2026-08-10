@@ -5,6 +5,7 @@ from core.personality.personality_engine import personality_engine
 from engine.voice.voice_engine import voice_engine
 from utils.system_info import get_formatted_status
 from core.logger import logger
+from core.events import events
 
 class CommandRouter:
     """
@@ -46,7 +47,7 @@ class CommandRouter:
         # 3. Allowlisted System Telemetry Commands
         if intent == IntentCategory.SYSTEM_COMMAND or any(w in p_lower for w in ["system status", "show status", "cpu", "ram"]):
             status_text = get_formatted_status()
-            transformed = personality_engine.transform_response(status_text)
+            transformed = personality_engine.transform_response(status_text, intent_str=intent.value)
             return StructuredResponse(
                 text=transformed,
                 intent=intent.value,
@@ -57,7 +58,7 @@ class CommandRouter:
         if "time" in p_lower or "clock" in p_lower:
             now_str = datetime.now().strftime("%I:%M:%S %p")
             raw_text = f"The current local time is {now_str}."
-            transformed = personality_engine.transform_response(raw_text)
+            transformed = personality_engine.transform_response(raw_text, intent_str=intent.value)
             return StructuredResponse(
                 text=transformed,
                 intent=intent.value,
@@ -67,7 +68,7 @@ class CommandRouter:
         # 5. Memory Intent: Project Name Query
         if "my project" in p_lower or "project called" in p_lower:
             raw_text = "Your project is called JARVIS."
-            transformed = personality_engine.transform_response(raw_text)
+            transformed = personality_engine.transform_response(raw_text, intent_str=intent.value)
             return StructuredResponse(
                 text=transformed,
                 intent=intent.value,
@@ -81,7 +82,7 @@ class CommandRouter:
                 b = BrowserPlugin()
                 b.search_web(prompt)
                 raw_text = f"Launching browser query for '{prompt}'."
-                transformed = personality_engine.transform_response(raw_text)
+                transformed = personality_engine.transform_response(raw_text, intent_str=intent.value)
                 return StructuredResponse(
                     text=transformed,
                     intent=intent.value,
@@ -91,8 +92,13 @@ class CommandRouter:
                 logger.error(f"[CommandRouter] Plugin execution error: {e}")
 
         # 7. General AI Provider Reasoning
+        params = personality_engine.state.get_all_params()
+        events.log_emitted.emit("personality", f"Profile: {personality_engine.state.active_profile} | Humor: {params.get('humor')}% | Sarcasm: {params.get('sarcasm')}%")
+        events.log_emitted.emit("core", "Generating contextual response...")
+
         raw_response = provider.generate_response(prompt, history)
-        transformed_response = personality_engine.transform_response(raw_response)
+        transformed_response = personality_engine.transform_response(raw_response, intent_str=intent.value)
+        
         return StructuredResponse(
             text=transformed_response,
             intent=intent.value,
