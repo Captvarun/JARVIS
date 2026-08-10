@@ -9,11 +9,11 @@ from core.events import events
 
 class CommandRouter:
     """
-    Safe Route Dispatcher with Personality Response Transformation.
+    Safe Route Dispatcher with Personality & Short-Term Memory Integration.
     Connects intents to allowlisted read-only system tools, memory lookups,
     personality engine, or AI provider reasoning.
     """
-    def route(self, prompt: str, intent: IntentCategory, provider, history: list) -> StructuredResponse:
+    def route(self, prompt: str, intent: IntentCategory, provider, context_mgr) -> StructuredResponse:
         p_lower = prompt.lower().strip()
         logger.info(f"[CommandRouter] Routing prompt: '{prompt}' | Intent: {intent.value}")
 
@@ -34,7 +34,16 @@ class CommandRouter:
                 action="MUTE_VOICE"
             )
 
-        # 2. Personality Intents
+        # 2. Short-Term Memory Reset Commands
+        if any(w in p_lower for w in ["forget this conversation", "clear conversation memory", "reset context"]):
+            context_mgr.reset_memory()
+            return StructuredResponse(
+                text="Short-term conversation memory cleared.",
+                intent="memory_control",
+                action="MEMORY_RESET"
+            )
+
+        # 3. Personality Intents
         if intent in (IntentCategory.MODIFY_PERSONALITY, IntentCategory.GET_PERSONALITY, 
                       IntentCategory.RESET_PERSONALITY, IntentCategory.SET_PERSONALITY_PROFILE):
             p_res = personality_engine.process_command(prompt)
@@ -44,7 +53,7 @@ class CommandRouter:
                 action="PERSONALITY_UPDATE"
             )
 
-        # 3. Allowlisted System Telemetry Commands
+        # 4. Allowlisted System Telemetry Commands
         if intent == IntentCategory.SYSTEM_COMMAND or any(w in p_lower for w in ["system status", "show status", "cpu", "ram"]):
             status_text = get_formatted_status()
             transformed = personality_engine.transform_response(status_text, intent_str=intent.value)
@@ -54,7 +63,7 @@ class CommandRouter:
                 action="SYSTEM_TELEMETRY"
             )
 
-        # 4. Information Request: Time / Clock
+        # 5. Information Request: Time / Clock
         if "time" in p_lower or "clock" in p_lower:
             now_str = datetime.now().strftime("%I:%M:%S %p")
             raw_text = f"The current local time is {now_str}."
@@ -65,7 +74,7 @@ class CommandRouter:
                 action="GET_TIME"
             )
 
-        # 5. Memory Intent: Project Name Query
+        # 6. Memory Intent: Project Name Query
         if "my project" in p_lower or "project called" in p_lower:
             raw_text = "Your project is called JARVIS."
             transformed = personality_engine.transform_response(raw_text, intent_str=intent.value)
@@ -75,7 +84,7 @@ class CommandRouter:
                 action="MEMORY_QUERY"
             )
 
-        # 6. Plugin Action: Web Browser Launch
+        # 7. Plugin Action: Web Browser Launch
         if intent == IntentCategory.PLUGIN or any(w in p_lower for w in ["open google", "search", "browser"]):
             try:
                 from plugins.browser.plugin import BrowserPlugin
@@ -91,12 +100,17 @@ class CommandRouter:
             except Exception as e:
                 logger.error(f"[CommandRouter] Plugin execution error: {e}")
 
-        # 7. General AI Provider Reasoning
-        params = personality_engine.state.get_all_params()
-        events.log_emitted.emit("personality", f"Profile: {personality_engine.state.active_profile} | Humor: {params.get('humor')}% | Sarcasm: {params.get('sarcasm')}%")
-        events.log_emitted.emit("core", "Generating contextual response...")
+        # 8. Reference Resolution & General AI Provider Reasoning
+        resolution = context_mgr.resolve_references(prompt)
+        history = context_mgr.get_history()
+        active_topic = context_mgr.active_topic
 
-        raw_response = provider.generate_response(prompt, history)
+        raw_response = provider.generate_response(
+            prompt=prompt, 
+            history=history, 
+            topic=active_topic, 
+            resolution=resolution
+        )
         transformed_response = personality_engine.transform_response(raw_response, intent_str=intent.value)
         
         return StructuredResponse(
