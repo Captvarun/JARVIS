@@ -4,8 +4,8 @@ from typing import Dict, Any, Optional
 
 class PersonalityContextManager:
     """
-    Context Classifier & Behavioral Decision Engine for Milestone 5.
-    Prioritizes semantic intent above REPEATED_QUERY and determines explicit Response Modes.
+    Context Classifier & Behavioral Decision Engine for Milestone 6.
+    Classifies interaction types including VISION_ANALYSIS with priority decision rules.
     """
     def __init__(self):
         self.context_tag: str = "UNKNOWN"
@@ -14,69 +14,76 @@ class PersonalityContextManager:
 
     def classify_interaction(self, prompt: str, intent_str: str = "conversation") -> str:
         """
-        Classifies interaction with word boundary precision:
-        1. HUMOR_REQUEST
-        2. SYSTEM_COMMAND
-        3. TECHNICAL
-        4. INFORMATION_REQUEST
-        5. EMOTIONAL
-        6. GREETING
-        7. CASUAL_CONVERSATION
-        8. REPEATED_QUERY (only if unclassified above)
-        9. UNKNOWN
+        Classifies interaction with priority:
+        1. VISION_ANALYSIS
+        2. HUMOR_REQUEST
+        3. SYSTEM_COMMAND
+        4. TECHNICAL
+        5. INFORMATION_REQUEST
+        6. EMOTIONAL
+        7. GREETING
+        8. CASUAL_CONVERSATION
+        9. REPEATED_QUERY
+        10. UNKNOWN
         """
         p_lower = prompt.lower().strip()
 
-        # 1. Explicit Humor / Roast Requests (HIGHEST PRIORITY)
+        # 1. Vision Analysis Intent (HIGHEST PRIORITY)
+        if intent_str == "vision_screen_analysis" or any(w in p_lower for w in ["analyze my screen", "what am i looking at", "look at my screen", "what's on my screen", "read my screen", "inspect my screen"]):
+            self.context_tag = "VISION_ANALYSIS"
+            self.last_prompt = p_lower
+            return self.context_tag
+
+        # 2. Explicit Humor / Roast Requests
         if re.search(r"\b(roast me|roast|tell me a joke|joke|humor me|make me laugh|say something funny|make me laugh jarvis)\b", p_lower):
             self.context_tag = "HUMOR_REQUEST"
             self.last_prompt = p_lower
             return self.context_tag
 
-        # 2. Operational / System Commands
+        # 3. Operational / System Commands
         if intent_str in ("plugin", "application_action") or any(w in p_lower for w in ["open google", "search web", "launch"]):
             self.context_tag = "SYSTEM_COMMAND"
             self.last_prompt = p_lower
             return self.context_tag
 
-        # 3. Technical Knowledge Queries
+        # 4. Technical Knowledge Queries
         if any(w in p_lower for w in ["what is python", "explain python", "how does python work", "define ", "code"]):
             self.context_tag = "TECHNICAL"
             self.last_prompt = p_lower
             return self.context_tag
 
-        # 4. System Telemetry & Factual Information Requests
+        # 5. System Telemetry & Factual Information Requests
         if intent_str in ("system_command", "information_request", "get_time") or any(w in p_lower for w in ["ram usage", "cpu usage", "system status", "disk", "uptime", "clock", "what time"]):
             self.context_tag = "INFORMATION_REQUEST"
             self.last_prompt = p_lower
             return self.context_tag
 
-        # 5. Emotional / Serious Inputs
+        # 6. Emotional / Serious Inputs
         if re.search(r"\b(tired|exhausted|stressed|sad|unhappy|depressed|emergency|hurt)\b", p_lower):
             self.context_tag = "EMOTIONAL"
             self.last_prompt = p_lower
             return self.context_tag
 
-        # 6. Greetings (Using exact word boundaries)
+        # 7. Greetings
         if re.search(r"\b(hello|hi|hey|greetings|good morning|good evening)\b", p_lower):
             self.context_tag = "GREETING"
             self.last_prompt = p_lower
             return self.context_tag
 
-        # 7. Personality Query / Management
+        # 8. Personality Query / Management
         if any(w in p_lower for w in ["sarcasm level", "humor level", "personality", "settings"]):
             self.context_tag = "INFORMATION_REQUEST"
             self.last_prompt = p_lower
             return self.context_tag
 
-        # 8. Check for Repeated Query ONLY for generic inputs
+        # 9. Check for Repeated Query ONLY for generic inputs
         if p_lower == self.last_prompt and p_lower:
             self.context_tag = "REPEATED_QUERY"
             return self.context_tag
 
         self.last_prompt = p_lower
 
-        # 9. Casual Conversation
+        # 10. Casual Conversation
         if intent_str == "conversation":
             self.context_tag = "CASUAL_CONVERSATION"
             return self.context_tag
@@ -86,7 +93,7 @@ class PersonalityContextManager:
 
     def evaluate_humor_decision(self, context: str, humor_level: int, turns_since_last: int) -> bool:
         """Determines humor decision: ENABLED or SUPPRESSED."""
-        if context in ("SYSTEM_COMMAND", "TECHNICAL", "INFORMATION_REQUEST", "EMOTIONAL"):
+        if context in ("SYSTEM_COMMAND", "TECHNICAL", "INFORMATION_REQUEST", "EMOTIONAL", "VISION_ANALYSIS"):
             return False
 
         if "suppress_humor" in self.temp_overrides and self.temp_overrides["suppress_humor"]:
@@ -103,7 +110,7 @@ class PersonalityContextManager:
 
     def evaluate_sarcasm_decision(self, context: str, sarcasm_level: int, turns_since_last: int) -> bool:
         """Determines sarcasm decision: ENABLED or SUPPRESSED."""
-        if context in ("SYSTEM_COMMAND", "TECHNICAL", "INFORMATION_REQUEST", "EMOTIONAL"):
+        if context in ("SYSTEM_COMMAND", "TECHNICAL", "INFORMATION_REQUEST", "EMOTIONAL", "VISION_ANALYSIS"):
             return False
 
         if "suppress_sarcasm" in self.temp_overrides and self.temp_overrides["suppress_sarcasm"]:
@@ -120,7 +127,7 @@ class PersonalityContextManager:
 
     def determine_response_mode(self, context: str, humor_ok: bool, sarcasm_ok: bool) -> str:
         """Computes explicit Response Mode based on Context, Humor, and Sarcasm decisions."""
-        if context in ("SYSTEM_COMMAND", "INFORMATION_REQUEST", "TECHNICAL"):
+        if context in ("SYSTEM_COMMAND", "INFORMATION_REQUEST", "TECHNICAL", "VISION_ANALYSIS"):
             return "DIRECT" if context != "SYSTEM_COMMAND" else "SYSTEM_OPERATIONAL"
 
         if context == "EMOTIONAL":

@@ -3,14 +3,15 @@ from core.brain.intent import IntentCategory
 from core.brain.response import StructuredResponse
 from core.personality.personality_engine import personality_engine
 from engine.voice.voice_engine import voice_engine
+from engine.vision.vision_engine import vision_engine
 from utils.system_info import get_formatted_status
 from core.logger import logger
 from core.events import events
 
 class CommandRouter:
     """
-    Safe Route Dispatcher with Personality & Short-Term Memory Integration.
-    Connects intents to allowlisted read-only system tools, memory lookups,
+    Safe Route Dispatcher with Vision Engine, Personality & Short-Term Memory Integration.
+    Connects intents to allowlisted read-only system tools, vision analysis, memory lookups,
     personality engine, or AI provider reasoning.
     """
     def route(self, prompt: str, intent: IntentCategory, provider, context_mgr) -> StructuredResponse:
@@ -43,7 +44,17 @@ class CommandRouter:
                 action="MEMORY_RESET"
             )
 
-        # 3. Personality Intents
+        # 3. Vision Screen Analysis Intent (Dedicated One-Shot Screen Vision)
+        if intent == IntentCategory.VISION_SCREEN_ANALYSIS or any(w in p_lower for w in ["analyze my screen", "what am i looking at", "look at my screen", "what's on my screen", "read my screen", "inspect my screen"]):
+            raw_vision_resp = vision_engine.analyze_screen(prompt, is_user_explicit=True)
+            transformed = personality_engine.transform_response(raw_vision_resp, intent_str=intent.value)
+            return StructuredResponse(
+                text=transformed,
+                intent=intent.value,
+                action="VISION_ANALYSIS"
+            )
+
+        # 4. Personality Intents
         if intent in (IntentCategory.MODIFY_PERSONALITY, IntentCategory.GET_PERSONALITY, 
                       IntentCategory.RESET_PERSONALITY, IntentCategory.SET_PERSONALITY_PROFILE):
             p_res = personality_engine.process_command(prompt)
@@ -53,7 +64,7 @@ class CommandRouter:
                 action="PERSONALITY_UPDATE"
             )
 
-        # 4. Allowlisted System Telemetry Commands
+        # 5. Allowlisted System Telemetry Commands (MUST NOT activate Vision)
         if intent == IntentCategory.SYSTEM_COMMAND or any(w in p_lower for w in ["system status", "show status", "cpu", "ram"]):
             status_text = get_formatted_status()
             transformed = personality_engine.transform_response(status_text, intent_str=intent.value)
@@ -63,7 +74,7 @@ class CommandRouter:
                 action="SYSTEM_TELEMETRY"
             )
 
-        # 5. Information Request: Time / Clock
+        # 6. Information Request: Time / Clock
         if "time" in p_lower or "clock" in p_lower:
             now_str = datetime.now().strftime("%I:%M:%S %p")
             raw_text = f"The current local time is {now_str}."
@@ -74,7 +85,7 @@ class CommandRouter:
                 action="GET_TIME"
             )
 
-        # 6. Memory Intent: Project Name Query
+        # 7. Memory Intent: Project Name Query
         if "my project" in p_lower or "project called" in p_lower:
             raw_text = "Your project is called JARVIS."
             transformed = personality_engine.transform_response(raw_text, intent_str=intent.value)
@@ -84,7 +95,7 @@ class CommandRouter:
                 action="MEMORY_QUERY"
             )
 
-        # 7. Plugin Action: Web Browser Launch
+        # 8. Plugin Action: Web Browser Launch
         if intent == IntentCategory.PLUGIN or any(w in p_lower for w in ["open google", "search", "browser"]):
             try:
                 from plugins.browser.plugin import BrowserPlugin
@@ -100,7 +111,7 @@ class CommandRouter:
             except Exception as e:
                 logger.error(f"[CommandRouter] Plugin execution error: {e}")
 
-        # 8. Reference Resolution & General AI Provider Reasoning
+        # 9. Reference Resolution & General AI Provider Reasoning
         resolution = context_mgr.resolve_references(prompt)
         history = context_mgr.get_history()
         active_topic = context_mgr.active_topic

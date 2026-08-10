@@ -15,6 +15,7 @@ class EventBus(QObject):
     # Service response events
     ai_response_received = Signal(str)   # Response text
     voice_state_changed = Signal(str)    # Listening, Processing, Speaking, Idle
+    vision_state_changed = Signal(str)   # Standby, Analyzing, Ready
     vision_frame_processed = Signal(object) # Frame data or detection info
     
     # State update events

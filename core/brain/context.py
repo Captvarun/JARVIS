@@ -5,9 +5,9 @@ from core.logger import logger
 
 class ContextManager:
     """
-    Short-Term Conversational Memory & Reference Resolution Engine for Milestone 5.
+    Short-Term Conversational Memory & Reference Resolution Engine for Milestone 6.
     Maintains a bounded rolling window of structured turns, active topic tracking,
-    pronoun/anaphora reference resolution, and memory reset.
+    pronoun/anaphora reference resolution for visual analysis, and memory reset.
     """
     def __init__(self, max_turns: int = 15):
         self.max_turns = max_turns
@@ -49,6 +49,8 @@ class ContextManager:
         """Determines active topic from intent, context, and input keywords."""
         p_lower = user_msg.lower().strip()
 
+        if intent == "vision_screen_analysis" or context == "VISION_ANALYSIS":
+            return "VISION"
         if context == "HUMOR_REQUEST" or any(w in p_lower for w in ["joke", "roast", "funny", "humor"]):
             return "HUMOR"
         if context == "TECHNICAL" or "python" in p_lower or "code" in p_lower:
@@ -67,7 +69,7 @@ class ContextManager:
     def resolve_references(self, prompt: str) -> Dict[str, Any]:
         """
         Lightweight Reference Resolution Engine.
-        Resolves pronouns ('it', 'that'), follow-ups ('another one', 'why'), and ambiguous state questions.
+        Resolves pronouns ('it', 'that'), visual references ('read that error'), and follow-ups.
         """
         p_lower = prompt.lower().strip()
         resolution = {"resolved_prompt": prompt, "entity": None, "reference_type": None}
@@ -80,14 +82,21 @@ class ContextManager:
         last_resp = last_turn.get("assistant", "")
         last_topic = last_turn.get("topic", self.active_topic)
 
-        # 1. "it" resolution ("Why is it popular?", "What is it?")
+        # 1. Visual reference resolution ("read that error", "what does it mean?")
+        if ("that error" in p_lower or "the error" in p_lower or "what does it mean" in p_lower) and last_topic == "VISION":
+            resolution["entity"] = last_resp
+            resolution["reference_type"] = "VISUAL_ERROR_REFERENCE"
+            events.log_emitted.emit("conversation", f"Resolving reference: 'that error' -> previous visual analysis response")
+            return resolution
+
+        # 2. "it" resolution ("Why is it popular?", "What is it?")
         if " it" in p_lower or "it " in p_lower or p_lower.startswith("it "):
             if "python" in last_user or last_topic == "TECHNICAL":
                 resolution["entity"] = "Python"
                 resolution["reference_type"] = "PRONOUN_IT"
                 events.log_emitted.emit("conversation", "Resolving reference: 'it' -> previous subject 'Python'")
 
-        # 2. "that" resolution ("Is that bad?", "That was terrible", "That was weak", "What was that?")
+        # 3. "that" resolution ("Is that bad?", "That was terrible", "That was weak")
         if "that" in p_lower:
             if "ram" in last_user or "cpu" in last_user or last_topic == "SYSTEM":
                 resolution["entity"] = "RAM / System Telemetry"
@@ -98,7 +107,7 @@ class ContextManager:
                 resolution["reference_type"] = "DEMONSTRATIVE_THAT_HUMOR"
                 events.log_emitted.emit("conversation", "Resolving reference: 'that' -> previous JARVIS joke/roast")
 
-        # 3. Action repetition ("another one", "one more")
+        # 4. Action repetition ("another one", "one more")
         if "another one" in p_lower or "one more" in p_lower:
             if last_topic == "HUMOR":
                 resolution["entity"] = "HUMOR_REQUEST"

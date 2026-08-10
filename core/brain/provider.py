@@ -24,8 +24,7 @@ class BaseAIProvider(ABC):
 class LocalMockProvider(BaseAIProvider):
     """
     Offline Local Intelligence Provider.
-    Implements Milestone 5 Short-Term Memory, Topic Tracking, Reference Resolution,
-    and natural dialogue without generic fallback overrides.
+    Implements Milestone 5 Short-Term Memory & Milestone 6 Visual Reference Resolution.
     """
     def __init__(self):
         self.operator_name = config.get("system.operator", "Varun")
@@ -39,16 +38,19 @@ class LocalMockProvider(BaseAIProvider):
     ) -> str:
         p_lower = prompt.lower().strip()
         params = personality_engine.state.get_all_params()
-        active_profile = personality_engine.state.active_profile
         sarcasm = params.get("sarcasm", 30)
         ref_type = resolution.get("reference_type") if resolution else None
         entity = resolution.get("entity") if resolution else None
 
-        # 1. Post-Reset Context Queries ("What was the joke?", "What did we talk about?")
+        # 1. Visual Error & Analysis Follow-ups ("read that error", "what does it mean?")
+        if ref_type == "VISUAL_ERROR_REFERENCE" or "read that error" in p_lower:
+            return f"The visual analysis indicates an assertion warning in your development console. It suggests inspecting line 47 of your script for parameter alignment."
+
+        # 2. Post-Reset Context Queries ("What was the joke?", "What did we talk about?")
         if ("what was the joke" in p_lower or "what did we just say" in p_lower) and not history:
             return f"I don't have any recent conversation stored in memory, {self.operator_name}. My short-term context was reset."
 
-        # 2. Resolved Reference Follow-Ups
+        # 3. Resolved Reference Follow-Ups
         # A. Pronoun "it" (e.g. "Why is it popular?" after "What is Python?")
         if ref_type == "PRONOUN_IT" or "why is it popular" in p_lower:
             return f"Python is popular, {self.operator_name}, due to its simple syntax, high readability, massive ecosystem of libraries, and dominant role in AI, data science, and web development."
@@ -72,11 +74,11 @@ class LocalMockProvider(BaseAIProvider):
             ]
             return random.choice(jokes)
 
-        # 3. Technical Knowledge Queries ("What is Python?", "Explain Python")
+        # 4. Technical Knowledge Queries ("What is Python?", "Explain Python")
         if "what is python" in p_lower or "explain python" in p_lower:
             return "Python is a high-level, interpreted programming language known for its clear syntax, dynamic typing, and widespread use in software development, data science, and AI."
 
-        # 4. Explicit Roast Commands ("jarvis roast me", "roast me", "roast")
+        # 5. Explicit Roast Commands ("jarvis roast me", "roast me", "roast")
         if "roast" in p_lower:
             if sarcasm <= 10:
                 return f"I'm currently set to low sarcasm, {self.operator_name}, so I'll spare you the burns for now."
@@ -95,7 +97,7 @@ class LocalMockProvider(BaseAIProvider):
                 ]
                 return random.choice(roasts_spicy)
 
-        # 5. Explicit Humor Requests ("humor me", "make me laugh")
+        # 6. Explicit Humor Requests ("humor me", "make me laugh")
         if "humor me" in p_lower or "make me laugh" in p_lower or "say something funny" in p_lower:
             humor_remarks = [
                 f"Certainly, {self.operator_name}. I checked your productivity levels. They're currently hiding from me.",
@@ -104,7 +106,7 @@ class LocalMockProvider(BaseAIProvider):
             ]
             return random.choice(humor_remarks)
 
-        # 6. Explicit Joke Requests ("tell me a joke", "joke")
+        # 7. Explicit Joke Requests ("tell me a joke", "joke")
         if "tell me a joke" in p_lower or "joke" in p_lower:
             jokes = [
                 "Why do programmers prefer dark mode? Because light attracts bugs.",
@@ -114,15 +116,15 @@ class LocalMockProvider(BaseAIProvider):
             ]
             return random.choice(jokes)
 
-        # 7. User State / Emotional Statements ("i'm tired", "tired", "exhausted", "stressed")
+        # 8. User State / Emotional Statements ("i'm tired", "tired", "exhausted", "stressed")
         if any(w in p_lower for w in ["tired", "exhausted", "stressed", "worn out"]):
             return f"Sounds like you've had a long day, {self.operator_name}. Make sure to step away and get some rest."
 
-        # 8. Affirmations & Confirmations ("no issues go ahead", "go ahead", "all good", "sure")
+        # 9. Affirmations & Confirmations ("no issues go ahead", "go ahead", "all good", "sure")
         if any(w in p_lower for w in ["no issues go ahead", "go ahead", "all good", "proceed"]):
             return f"Understood, {self.operator_name}. Proceeding with active tasks."
 
-        # 9. Contextual Follow-up Query ("what should i do?", "what now?")
+        # 10. Contextual Follow-up Query ("what should i do?", "what now?")
         if "what should i do" in p_lower or "what now" in p_lower:
             recent_user_msgs = [h.get("message", "").lower() for h in history[-3:] if h.get("role") == "user"]
             if any("tired" in turn or "exhausted" in turn for turn in recent_user_msgs):
@@ -130,26 +132,27 @@ class LocalMockProvider(BaseAIProvider):
             else:
                 return f"I suggest reviewing your active tasks in the timeline or letting me know what project we should focus on next, {self.operator_name}."
 
-        # 10. Conversational Status Queries ("how are you doing", "how are you", "how's it going")
+        # 11. Conversational Status Queries ("how are you doing", "how are you", "how's it going")
         if any(w in p_lower for w in ["how are you", "how're you", "how are you doing", "how's it going", "what's up"]):
             if sarcasm >= 50:
                 return f"I'm running smoothly, {self.operator_name}. Your computer, however, appears to be negotiating with gravity."
             return f"Doing well, {self.operator_name}. Everything is running smoothly."
 
-        # 11. Greetings
+        # 12. Greetings
         if any(w in p_lower for w in ["hello", "hi", "hey", "greetings"]):
             return f"Hello, {self.operator_name}. Systems are ready."
 
-        # 12. Capabilities & Help Queries
+        # 13. Capabilities & Help Queries
         if "what can you do" in p_lower or "capabilities" in p_lower or "help" in p_lower:
             return ("Here are my currently active capabilities:\n"
                     "• System Telemetry: Check CPU, RAM, Disk, Uptime, and OS details ('show system status')\n"
                     "• Time & Date: Precision clock queries ('what time is it')\n"
                     "• Browser Plugin: Launch web queries ('open google', 'search python')\n"
+                    "• Vision Subsystem: One-shot screen vision analysis ('analyze my screen')\n"
                     "• Milestone 5 Short-Term Memory: Topic tracking & reference resolution ('why is it popular?')\n"
                     "• Voice Subsystem: Full Speech-to-Text and Text-to-Speech synthesis")
 
-        # 13. General Dialogue Response
+        # 14. General Dialogue Response
         return f"Understood, {self.operator_name}. Standing by for your next instruction."
 
 class OpenAIProvider(BaseAIProvider):
@@ -197,7 +200,7 @@ class OpenAIProvider(BaseAIProvider):
                 "Authorization": f"Bearer {self.api_key}"
             })
 
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=12) as response:
                 res_body = json.loads(response.read().decode("utf-8"))
                 return res_body["choices"][0]["message"]["content"].strip()
         except Exception as e:
