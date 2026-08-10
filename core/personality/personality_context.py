@@ -4,7 +4,7 @@ from typing import Dict, Any, Optional
 
 class PersonalityContextManager:
     """
-    Context Classifier & Behavioral Decision Engine for Milestone 6.
+    Context Classifier & Behavioral Decision Engine for Milestone 6 Patch.
     Classifies interaction types including VISION_ANALYSIS with priority decision rules.
     """
     def __init__(self):
@@ -29,7 +29,12 @@ class PersonalityContextManager:
         p_lower = prompt.lower().strip()
 
         # 1. Vision Analysis Intent (HIGHEST PRIORITY)
-        if intent_str == "vision_screen_analysis" or any(w in p_lower for w in ["analyze my screen", "what am i looking at", "look at my screen", "what's on my screen", "read my screen", "inspect my screen"]):
+        if intent_str == "vision_screen_analysis" or any(w in p_lower for w in [
+            "analyze my screen", "what am i looking at", "look at my screen",
+            "what's on my screen", "read my screen", "inspect my screen",
+            "can you see my code", "describe the important things you can see on my screen",
+            "what else am i doing"
+        ]):
             self.context_tag = "VISION_ANALYSIS"
             self.last_prompt = p_lower
             return self.context_tag

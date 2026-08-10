@@ -44,9 +44,28 @@ class CommandRouter:
                 action="MEMORY_RESET"
             )
 
-        # 3. Vision Screen Analysis Intent (Dedicated One-Shot Screen Vision)
-        if intent == IntentCategory.VISION_SCREEN_ANALYSIS or any(w in p_lower for w in ["analyze my screen", "what am i looking at", "look at my screen", "what's on my screen", "read my screen", "inspect my screen"]):
-            raw_vision_resp = vision_engine.analyze_screen(prompt, is_user_explicit=True)
+        # 3. Vision Screen Analysis Intent (One-Shot Screen Vision & Contextual Vision Resolution)
+        if intent == IntentCategory.VISION_SCREEN_ANALYSIS:
+            has_visual_ctx = context_mgr.has_recent_visual_context() if context_mgr else False
+            current_screen_required = True
+
+            # Determine whether current screen capture is required or previous visual context is sufficient
+            if has_visual_ctx:
+                if any(phrase in p_lower for phrase in [
+                    "what was the error", "what was on my screen", "what application was i using",
+                    "what did you see earlier", "what error did you see earlier", "what was that error"
+                ]):
+                    current_screen_required = False
+
+            events.log_emitted.emit("vision", f"[vision] Current screen required: {'YES' if current_screen_required else 'NO'}")
+
+            if current_screen_required:
+                events.log_emitted.emit("vision", "[vision] Capture mode: ONE_SHOT")
+                raw_vision_resp = vision_engine.analyze_screen(prompt, is_user_explicit=True)
+            else:
+                prev_summary = context_mgr.active_visual_context.get("summary", "") if (context_mgr and context_mgr.active_visual_context) else ""
+                raw_vision_resp = f"Based on the previous screen analysis: {prev_summary}"
+
             transformed = personality_engine.transform_response(raw_vision_resp, intent_str=intent.value)
             return StructuredResponse(
                 text=transformed,

@@ -1,4 +1,6 @@
 from enum import Enum
+from core.logger import logger
+from core.events import events
 
 class IntentCategory(Enum):
     CONVERSATION = "conversation"
@@ -17,24 +19,70 @@ class IntentCategory(Enum):
 class IntentDetector:
     """
     Analyzes natural-language input to classify intent.
-    High-priority matching for Vision Screen Analysis, Personality Queries, and Modifications.
+    Implements Milestone 6 Patch: Contextual Vision Intent Detection.
+    Combines user prompt, recent conversation context, and active visual context.
     """
-    def detect(self, prompt: str) -> IntentCategory:
+    def detect(self, prompt: str, context_mgr=None) -> IntentCategory:
         p = prompt.lower().strip()
 
         if not p:
             return IntentCategory.UNKNOWN
 
-        # 1. High-Priority Screen Vision Analysis Intent (MUST NOT route to generic conversation)
-        if any(w in p for w in [
-            "analyze my screen", "what am i looking at", "look at my screen",
+        has_visual_ctx = False
+        if context_mgr and hasattr(context_mgr, "has_recent_visual_context"):
+            has_visual_ctx = context_mgr.has_recent_visual_context()
+
+        # 1. Explicit Screen Vision Phrases (ALWAYS trigger VISION_SCREEN_ANALYSIS)
+        explicit_vision_phrases = [
+            "analyze my screen", "look at my screen", "what am i looking at",
             "what's on my screen", "what is on my screen", "read my screen",
-            "inspect my screen", "what error am i getting", "what's wrong with this",
-            "read that error", "what error", "screen analysis"
-        ]):
+            "inspect my screen", "scan my screen", "describe the important things you can see on my screen",
+            "can you see my code", "describe what you see", "what else can you see",
+            "screen analysis"
+        ]
+
+        if any(w in p for w in explicit_vision_phrases):
+            logger.info("[core] Intent candidate: VISION_SCREEN_ANALYSIS")
+            events.log_emitted.emit("core", "[core] Intent candidate: VISION_SCREEN_ANALYSIS")
+            if has_visual_ctx:
+                events.log_emitted.emit("conversation", "[conversation] Recent visual context: AVAILABLE")
+            else:
+                events.log_emitted.emit("conversation", "[conversation] Recent visual context: NOT_AVAILABLE")
+            logger.info("[core] Final intent: VISION_SCREEN_ANALYSIS")
+            events.log_emitted.emit("core", "[core] Final intent: VISION_SCREEN_ANALYSIS")
             return IntentCategory.VISION_SCREEN_ANALYSIS
 
-        # 2. High-Priority Personality Queries (MUST match before generic conversation)
+        # 2. Contextual / Implicit Vision Triggers (Require recent visual context or specific visual keywords)
+        implicit_vision_phrases = [
+            "what else am i doing", "what do you see", "what error is that",
+            "what error do you see", "what was the error", "what does that say",
+            "where is the problem", "what's wrong with this", "what should i do next",
+            "did it disappear", "did anything change", "what's on my screen now"
+        ]
+        visual_ref_tokens = ["this", "that", "it", "here", "there"]
+
+        if has_visual_ctx:
+            matched_phrase = next((w for w in implicit_vision_phrases if w in p), None)
+            matched_ref = None
+            if not matched_phrase and any(ref in p for ref in visual_ref_tokens):
+                if any(kw in p for kw in ["see", "code", "error", "doing", "screen", "problem", "disappear", "change", "look"]):
+                    matched_ref = next((ref for ref in visual_ref_tokens if ref in p), "visual reference")
+
+            if matched_phrase or matched_ref:
+                ref_text = matched_phrase or matched_ref
+                logger.info("[core] Intent candidate: VISION_SCREEN_ANALYSIS")
+                events.log_emitted.emit("core", "[core] Intent candidate: VISION_SCREEN_ANALYSIS")
+                events.log_emitted.emit("conversation", "[conversation] Recent visual context: AVAILABLE")
+                logger.info(f'[conversation] Visual reference detected: "{ref_text}"')
+                events.log_emitted.emit("conversation", f'[conversation] Visual reference detected: "{ref_text}"')
+                logger.info("[core] Final intent: VISION_SCREEN_ANALYSIS")
+                events.log_emitted.emit("core", "[core] Final intent: VISION_SCREEN_ANALYSIS")
+                return IntentCategory.VISION_SCREEN_ANALYSIS
+        else:
+            if any(w in p for w in implicit_vision_phrases):
+                events.log_emitted.emit("conversation", "[conversation] Recent visual context: NOT_AVAILABLE")
+
+        # 3. High-Priority Personality Queries
         if any(w in p for w in [
             "what's your personality", "what is your personality", "show your personality",
             "current settings", "current personality", "sarcasm level", "humor level",
@@ -45,15 +93,15 @@ class IntentDetector:
         ]):
             return IntentCategory.GET_PERSONALITY
 
-        # 3. Personality Reset
+        # 4. Personality Reset
         if ("reset" in p and "personality" in p) or "default personality" in p:
             return IntentCategory.RESET_PERSONALITY
 
-        # 4. Profile Switch
+        # 5. Profile Switch
         if any(w in p for w in ["professional mode", "companion mode", "sarcastic mode", "focus mode", "switch to", "profile", "go into"]):
             return IntentCategory.SET_PERSONALITY_PROFILE
 
-        # 5. Personality Parameter Modification & Tuning Commands
+        # 6. Personality Parameter Modification & Tuning Commands
         if any(w in p for w in [
             "set ", "reduce ", "increase ", "make yourself ", "be more ", "be less ",
             "turn ", "stop being ", "calm down", "don't joke", "dont joke", "stop joking",
@@ -66,24 +114,21 @@ class IntentDetector:
             ]):
                 return IntentCategory.MODIFY_PERSONALITY
 
-        # 6. System Command Intent
+        # 7. System Command Intent (Telemetries MUST NOT trigger Vision)
         if any(w in p for w in ["system status", "cpu", "ram", "disk", "uptime", "os", "specs", "telemetry"]):
             return IntentCategory.SYSTEM_COMMAND
 
-        # 7. Information Request Intent
+        # 8. Information Request Intent
         if any(w in p for w in ["what time", "current time", "date", "clock", "what is my name", "what can you do"]):
             return IntentCategory.INFORMATION_REQUEST
 
-        # 8. Memory Query Intent
+        # 9. Memory Query Intent
         if any(w in p for w in ["my project", "what is my project", "remember", "recall"]):
             return IntentCategory.MEMORY
 
-        # 9. Plugin Intent
+        # 10. Plugin Intent
         if any(w in p for w in ["browser", "open google", "search", "youtube", "github", "spotify", "weather"]):
             return IntentCategory.PLUGIN
 
-        # 10. General Conversation Intent
-        if any(w in p for w in ["hello", "hi", "hey", "jarvis", "who are you", "what are you", "thank", "how are you"]):
-            return IntentCategory.CONVERSATION
-
+        # 11. General Conversation Intent
         return IntentCategory.CONVERSATION

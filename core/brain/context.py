@@ -7,12 +7,14 @@ class ContextManager:
     """
     Short-Term Conversational Memory & Reference Resolution Engine for Milestone 6.
     Maintains a bounded rolling window of structured turns, active topic tracking,
-    pronoun/anaphora reference resolution for visual analysis, and memory reset.
+    pronoun/anaphora reference resolution for visual analysis, lightweight active visual context,
+    and memory reset.
     """
     def __init__(self, max_turns: int = 15):
         self.max_turns = max_turns
         self.history: List[Dict[str, Any]] = []
         self.active_topic: str = "UNKNOWN"
+        self.active_visual_context: Optional[Dict[str, Any]] = None
         events.log_emitted.emit("conversation", "Memory initialized")
 
     def add_turn(
@@ -37,6 +39,17 @@ class ContextManager:
             "timestamp": time.time()
         }
 
+        # Track lightweight active visual context without saving binary images
+        if intent == "vision_screen_analysis" or context == "VISION_ANALYSIS" or topic == "VISION":
+            self.active_visual_context = {
+                "source": "SCREEN",
+                "type": "SCREEN_ANALYSIS",
+                "summary": jarvis_resp,
+                "timestamp": time.time()
+            }
+            logger.info("[conversation] Active visual context: SOURCE = SCREEN | TYPE = SCREEN_ANALYSIS")
+            events.log_emitted.emit("conversation", "[conversation] Active visual context: SOURCE = SCREEN | TYPE = SCREEN_ANALYSIS")
+
         self.history.append(turn)
 
         # Enforce rolling window bound
@@ -44,6 +57,13 @@ class ContextManager:
             self.history.pop(0)
 
         events.log_emitted.emit("conversation", f"Active topic: {self.active_topic} | Memory size: {len(self.history)} turns")
+
+    def has_recent_visual_context(self, max_age_seconds: float = 300.0) -> bool:
+        """Returns True if a valid active visual context exists within max_age_seconds."""
+        if not self.active_visual_context:
+            return False
+        age = time.time() - self.active_visual_context.get("timestamp", 0)
+        return age <= max_age_seconds
 
     def classify_topic(self, intent: str, context: str, user_msg: str) -> str:
         """Determines active topic from intent, context, and input keywords."""
@@ -83,7 +103,7 @@ class ContextManager:
         last_topic = last_turn.get("topic", self.active_topic)
 
         # 1. Visual reference resolution ("read that error", "what does it mean?")
-        if ("that error" in p_lower or "the error" in p_lower or "what does it mean" in p_lower) and last_topic == "VISION":
+        if ("that error" in p_lower or "the error" in p_lower or "what does it mean" in p_lower) and (last_topic == "VISION" or self.has_recent_visual_context()):
             resolution["entity"] = last_resp
             resolution["reference_type"] = "VISUAL_ERROR_REFERENCE"
             events.log_emitted.emit("conversation", f"Resolving reference: 'that error' -> previous visual analysis response")
@@ -117,9 +137,10 @@ class ContextManager:
         return resolution
 
     def reset_memory(self):
-        """Clears short-term conversational runtime memory."""
+        """Clears short-term conversational runtime memory and active visual context."""
         self.history.clear()
         self.active_topic = "UNKNOWN"
+        self.active_visual_context = None
         events.log_emitted.emit("conversation", "Memory reset requested")
         events.log_emitted.emit("conversation", "Conversation memory cleared")
 

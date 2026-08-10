@@ -38,8 +38,8 @@ class JarvisBrain(BaseLifecycleComponent):
         try:
             logger.info(f"[JarvisBrain] Processing prompt: '{p_clean}'")
 
-            # 1. Detect Intent
-            intent_cat = self.intent_detector.detect(p_clean)
+            # 1. Detect Intent with Contextual Memory
+            intent_cat = self.intent_detector.detect(p_clean, context_mgr=self.context)
             events.log_emitted.emit("core", f"Intent detected: {intent_cat.value}")
 
             # 2. Route Command & Resolve References
