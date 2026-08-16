@@ -51,22 +51,33 @@ class CommandRouter:
 
             # Determine whether current screen capture is required or previous visual context is sufficient
             if has_visual_ctx:
-                if any(phrase in p_lower for phrase in [
+                recall_phrases = [
                     "what was the error", "what was the error you saw", "what was on my screen", 
                     "what application was i using", "what did you see earlier", 
                     "what error did you see earlier", "what was that error",
-                    "what was the thing you saw earlier"
-                ]):
+                    "what was the thing you saw earlier", "what did you see previously",
+                    "what did you see"
+                ]
+
+                current_state_phrases = [
+                    "is it still there", "is it still visible", "is that still there",
+                    "is the error still there", "did it disappear", "did the error disappear",
+                    "is it gone", "has it changed", "did anything change", "is the problem still there",
+                    "can you still see it", "do you still see that", "is that fixed",
+                    "did the error get fixed", "does it still show", "is it showing now",
+                    "is the application still open", "what's on my screen now", "what's on my screen right now"
+                ]
+
+                if any(phrase in p_lower for phrase in recall_phrases):
                     current_screen_required = False
                     logger.info("[vision] Visual reference detected: PREVIOUS_ANALYSIS")
                     events.log_emitted.emit("vision", "[vision] Visual reference detected: PREVIOUS_ANALYSIS")
                 else:
-                    if any(phrase in p_lower for phrase in [
-                        "did it disappear", "did the error disappear", "is the error still there",
-                        "did anything change", "what's on my screen right now", "what's on my screen now"
-                    ]):
-                        logger.info("[vision] Visual reference detected: PREVIOUS_ANALYSIS")
-                        events.log_emitted.emit("vision", "[vision] Visual reference detected: PREVIOUS_ANALYSIS")
+                    logger.info("[vision] Visual reference detected: PREVIOUS_ANALYSIS")
+                    events.log_emitted.emit("vision", "[vision] Visual reference detected: PREVIOUS_ANALYSIS")
+                    if any(phrase in p_lower for phrase in current_state_phrases) or any(ref in p_lower for ref in ["it", "that", "this", "still", "disappear", "gone", "fixed"]):
+                        logger.info("[vision] Current-state question detected: YES")
+                        events.log_emitted.emit("vision", "[vision] Current-state question detected: YES")
 
             logger.info(f"[vision] Current screen required: {'YES' if current_screen_required else 'NO'}")
             events.log_emitted.emit("vision", f"[vision] Current screen required: {'YES' if current_screen_required else 'NO'}")

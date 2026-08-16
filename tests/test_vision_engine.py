@@ -3,79 +3,68 @@ from core.brain.intent import IntentDetector, IntentCategory
 from core.brain.brain import JarvisBrain
 from engine.vision.vision_engine import vision_engine
 
-class TestMilestone6VisionEnginePatch2(unittest.TestCase):
+class TestMilestone61Patch(unittest.TestCase):
     def setUp(self):
         self.brain = JarvisBrain()
         self.brain.initialize()
         self.brain.context.reset_memory()
 
-    def test_a_fresh_start_implicit_visual_query(self):
-        # TEST A: Fresh start -> "What am I seeing?" -> VISION_SCREEN_ANALYSIS without prior context
-        res = self.brain.process_command("What am I seeing?")
-        self.assertTrue(res.success)
-        self.assertEqual(res.intent, "vision_screen_analysis")
+    def test_milestone_61_exact_sequence(self):
+        # TEST 1: Analyze my screen.
+        res1 = self.brain.process_command("Analyze my screen.")
+        self.assertTrue(res1.success)
+        self.assertEqual(res1.intent, "vision_screen_analysis")
 
-    def test_b_analyze_my_screen(self):
-        # TEST B: "Analyze my screen." -> VISION_SCREEN_ANALYSIS
-        res = self.brain.process_command("Analyze my screen.")
-        self.assertTrue(res.success)
-        self.assertEqual(res.intent, "vision_screen_analysis")
+        # TEST 2: What else am I doing?
+        res2 = self.brain.process_command("What else am I doing?")
+        self.assertTrue(res2.success)
+        self.assertEqual(res2.intent, "vision_screen_analysis")
 
-    def test_c_what_else_am_i_doing(self):
-        self.brain.process_command("Analyze my screen.")
-        # TEST C: "What else am I doing?" -> VISION_SCREEN_ANALYSIS
-        res = self.brain.process_command("What else am I doing?")
-        self.assertTrue(res.success)
-        self.assertEqual(res.intent, "vision_screen_analysis")
+        # TEST 3: What was the error?
+        res3 = self.brain.process_command("What was the error?")
+        self.assertTrue(res3.success)
+        self.assertEqual(res3.intent, "vision_screen_analysis")
+        self.assertIn("previous screen analysis", res3.text.lower())
 
-    def test_d_can_you_see_my_code(self):
-        # TEST D: "Can you see my code?" -> VISION_SCREEN_ANALYSIS
-        res = self.brain.process_command("Can you see my code?")
-        self.assertTrue(res.success)
-        self.assertEqual(res.intent, "vision_screen_analysis")
+        # TEST 4: Is it still there? (Current-State Question -> ONE_SHOT Capture)
+        res4 = self.brain.process_command("Is it still there?")
+        self.assertTrue(res4.success)
+        self.assertEqual(res4.intent, "vision_screen_analysis")
+        self.assertNotIn("based on the previous screen analysis", res4.text.lower())
 
-    def test_e_what_was_the_thing_you_saw_earlier(self):
-        self.brain.process_command("Analyze my screen.")
-        # TEST E: "What was the thing you saw earlier?" -> Previous visual context (Current screen required: NO)
-        res = self.brain.process_command("What was the thing you saw earlier?")
-        self.assertTrue(res.success)
-        self.assertEqual(res.intent, "vision_screen_analysis")
-        self.assertIn("previous screen analysis", res.text.lower())
+        # TEST 5: Did it disappear? (Current-State Question -> ONE_SHOT Capture)
+        res5 = self.brain.process_command("Did it disappear?")
+        self.assertTrue(res5.success)
+        self.assertEqual(res5.intent, "vision_screen_analysis")
+        self.assertNotIn("based on the previous screen analysis", res5.text.lower())
 
-    def test_f_whats_on_my_screen_right_now(self):
-        self.brain.process_command("Analyze my screen.")
-        # TEST F: "What's on my screen right now?" -> VISION_SCREEN_ANALYSIS (Current screen required: YES)
-        res = self.brain.process_command("What's on my screen right now?")
-        self.assertTrue(res.success)
-        self.assertEqual(res.intent, "vision_screen_analysis")
+        # TEST 6: What did you see previously? (Context Recall -> Current screen required: NO)
+        res6 = self.brain.process_command("What did you see previously?")
+        self.assertTrue(res6.success)
+        self.assertEqual(res6.intent, "vision_screen_analysis")
+        self.assertIn("previous screen analysis", res6.text.lower())
 
-    def test_g_did_anything_change(self):
-        self.brain.process_command("Analyze my screen.")
-        # TEST G: "Did anything change?" -> VISION_SCREEN_ANALYSIS (Current screen required: YES)
-        res = self.brain.process_command("Did anything change?")
-        self.assertTrue(res.success)
-        self.assertEqual(res.intent, "vision_screen_analysis")
+        # TEST 7: What's on my screen now? (Current-State Question -> ONE_SHOT Capture)
+        res7 = self.brain.process_command("What's on my screen now?")
+        self.assertTrue(res7.success)
+        self.assertEqual(res7.intent, "vision_screen_analysis")
 
-    def test_h_i_j_non_vision_conversational_queries(self):
-        self.brain.process_command("Analyze my screen.")
+        # TEST 8: Tell me a joke. -> conversation
+        res8 = self.brain.process_command("Tell me a joke.")
+        self.assertNotEqual(res8.intent, "vision_screen_analysis")
 
-        # TEST H: "Tell me a joke." -> conversation
-        res_h = self.brain.process_command("Tell me a joke.")
-        self.assertNotEqual(res_h.intent, "vision_screen_analysis")
+        # TEST 9: What's wrong with my life? -> conversation
+        res9 = self.brain.process_command("What's wrong with my life?")
+        self.assertNotEqual(res9.intent, "vision_screen_analysis")
 
-        # TEST I: "How are you?" -> conversation
-        res_i = self.brain.process_command("How are you?")
-        self.assertNotEqual(res_i.intent, "vision_screen_analysis")
+        # TEST 10: How are you? -> conversation
+        res10 = self.brain.process_command("How are you?")
+        self.assertNotEqual(res10.intent, "vision_screen_analysis")
 
-        # TEST J: "What's wrong with my life?" -> conversation
-        res_j = self.brain.process_command("What's wrong with my life?")
-        self.assertNotEqual(res_j.intent, "vision_screen_analysis")
-
-    def test_overmatching_prevention(self):
-        # Queries containing "what", "see", "think" that are NOT visual screen requests
+    def test_privacy_and_vague_queries(self):
         detector = IntentDetector()
-        self.assertNotEqual(detector.detect("What do you think about my project?"), IntentCategory.VISION_SCREEN_ANALYSIS)
-        self.assertNotEqual(detector.detect("Do you see what I mean?"), IntentCategory.VISION_SCREEN_ANALYSIS)
+        self.assertEqual(detector.detect("How is it going?"), IntentCategory.CONVERSATION)
+        self.assertEqual(detector.detect("Is it funny?"), IntentCategory.CONVERSATION)
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,9 +19,8 @@ class IntentCategory(Enum):
 class IntentDetector:
     """
     Analyzes natural-language input to classify intent.
-    Implements Milestone 6 Patch 2: High-Confidence Implicit Vision Intent Detection.
-    Resolves queries like 'What am I seeing?' to VISION_SCREEN_ANALYSIS without prior context,
-    while accurately avoiding conversational false-positives ('Do you see what I mean?').
+    Implements Milestone 6.1 Patch: Current-State Vision Follow-up Resolution.
+    Resolves current-state questions like 'Is it still there?' to VISION_SCREEN_ANALYSIS when visual context exists.
     """
     def detect(self, prompt: str, context_mgr=None) -> IntentCategory:
         p = prompt.lower().strip()
@@ -37,7 +36,7 @@ class IntentDetector:
         conversational_idioms = [
             "do you see what i mean", "do you see my point", "do you see how",
             "what do you think", "in this situation", "what's wrong with my life",
-            "tell me a joke", "how are you"
+            "tell me a joke", "how are you", "is it funny", "how is it going"
         ]
         if any(idiom in p for idiom in conversational_idioms) and not ("screen" in p or "code" in p or "error" in p):
             return IntentCategory.CONVERSATION
@@ -73,18 +72,21 @@ class IntentDetector:
         # 2. Contextual / Implicit Vision Follow-up Triggers (Require active recent visual context)
         implicit_vision_followups = [
             "what else am i doing", "what was the error", "what was the error you saw",
-            "what was the thing you saw earlier", "what did you see earlier",
-            "did it disappear", "did the error disappear", "is the error still there",
-            "did anything change", "what's on my screen right now", "what's on my screen now",
+            "what was the thing you saw earlier", "what did you see earlier", "what did you see previously",
+            "is it still there", "is it still visible", "is that still there", "is the error still there",
+            "did it disappear", "did the error disappear", "is it gone", "has it changed",
+            "did anything change", "is the problem still there", "can you still see it", "do you still see that",
+            "is that fixed", "did the error get fixed", "does it still show", "is it showing now",
+            "is the application still open", "what's on my screen right now", "what's on my screen now",
             "what should i do next"
         ]
 
         if has_visual_ctx:
             matched_phrase = next((w for w in implicit_vision_followups if w in p), None)
             matched_ref = None
-            if not matched_phrase and any(ref in p for ref in ["this", "that", "it", "here", "there"]):
-                if any(kw in p for kw in ["see", "code", "error", "doing", "screen", "problem", "disappear", "change", "look"]):
-                    matched_ref = next((ref for ref in ["this", "that", "it", "here", "there"] if ref in p), "visual reference")
+            if not matched_phrase and any(ref in p for ref in ["this", "that", "it", "here", "there", "error", "warning", "problem", "code", "button", "window"]):
+                if any(kw in p for kw in ["see", "code", "error", "doing", "screen", "problem", "disappear", "change", "look", "still", "gone", "fixed", "show", "open"]):
+                    matched_ref = next((ref for ref in ["this", "that", "it", "here", "there", "error"] if ref in p), "visual reference")
 
             if matched_phrase or matched_ref:
                 logger.info("[core] Intent candidate: VISION_SCREEN_ANALYSIS")
