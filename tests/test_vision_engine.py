@@ -51,6 +51,13 @@ class TestCompoundVisionReasoning(unittest.TestCase):
         self.assertIn("based on that", res7.text.lower())
         self.assertIn("your next step should be", res7.text.lower())
 
+    def test_codebase_inspection_exclusion(self):
+        detector = IntentDetector()
+        # Codebase inspection requests must NOT trigger screen vision analysis
+        self.assertEqual(detector.detect("Inspect the JARVIS project source code."), IntentCategory.CONVERSATION)
+        self.assertEqual(detector.detect("Inspect project files"), IntentCategory.CONVERSATION)
+        self.assertEqual(detector.detect("Debug source code in core/brain/intent.py"), IntentCategory.CONVERSATION)
+
     def test_non_vision_protections(self):
         detector = IntentDetector()
         self.assertEqual(detector.detect("Tell me a joke."), IntentCategory.CONVERSATION)

@@ -21,6 +21,7 @@ class IntentDetector:
     Analyzes natural-language input to classify intent.
     Implements Milestones 6-10: Vision Intelligence Upgrade & Non-Vision Protection.
     Supports compound visual requests (Observation + Diagnosis + Recommendation).
+    Disambiguates explicit codebase inspection requests from desktop screen vision analysis.
     """
     def detect(self, prompt: str, context_mgr=None) -> IntentCategory:
         p = prompt.lower().strip()
@@ -40,6 +41,18 @@ class IntentDetector:
             "tell me a story", "good morning", "i'm bored", "im bored"
         ]
         if any(idiom in p for idiom in conversational_idioms) and not any(kw in p for kw in ["screen", "code", "error", "window"]):
+            return IntentCategory.CONVERSATION
+
+        # 0.1 Explicit Codebase / Source Code Inspection Exclusion (Prevent screen vision hijacking)
+        codebase_inspection_phrases = [
+            "inspect project files", "inspect source code", "inspect the intent detector",
+            "inspect code", "debug source code", "debug your code", "read core/", "read engine/",
+            "read tests/", "inspect the vision pipeline", "inspect python files", "code architecture",
+            "jarvis project source code", "jarvis project files"
+        ]
+        if any(phrase in p for phrase in codebase_inspection_phrases) or (
+            any(w in p for w in ["source code", "codebase", "repository", "py file", ".py"]) and not any(v in p for v in ["screen", "window", "monitor", "display"])
+        ):
             return IntentCategory.CONVERSATION
 
         # 1. High-Confidence Visual Questions (Work WITH or WITHOUT previous visual context)
