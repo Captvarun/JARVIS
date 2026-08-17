@@ -20,7 +20,7 @@ class IntentDetector:
     """
     Analyzes natural-language input to classify intent.
     Implements Milestones 6-10: Vision Intelligence Upgrade & Non-Vision Protection.
-    Supports British and American spellings ("analyze", "analyse").
+    Supports compound visual requests (Observation + Diagnosis + Recommendation).
     """
     def detect(self, prompt: str, context_mgr=None) -> IntentCategory:
         p = prompt.lower().strip()
@@ -51,7 +51,10 @@ class IntentDetector:
             "what's wrong with this", "do you see any errors", "do you see an error",
             "what error do you see", "where is the problem", "what is happening on my screen",
             "analyze my screen", "analyse my screen", "look at my screen", "inspect my screen", "scan my screen",
-            "describe the important things you can see on my screen", "screen analysis"
+            "describe the important things you can see on my screen", "screen analysis",
+            "what did you just see", "what do you see and what should i do",
+            "what's wrong here and how do i fix it", "what did you notice and what's my next step",
+            "based on what you see", "what's wrong with what you're seeing", "what's the next step"
         ]
 
         if any(w in p for w in high_confidence_visual_questions):
@@ -83,14 +86,14 @@ class IntentDetector:
             "can you still see it", "do you still see that", "is that fixed", "did the error get fixed",
             "does it still show", "is it showing now", "is the application still open",
             "what's on my screen right now", "what's on my screen now", "what should i do next",
-            "what about that error", "what about that"
+            "what about that error", "what about that", "how do i fix it", "next step", "what to fix first"
         ]
 
         if has_visual_ctx:
             matched_phrase = next((w for w in implicit_vision_followups if w in p), None)
             matched_ref = None
             if not matched_phrase and any(ref in p for ref in ["this", "that", "it", "here", "there", "error", "warning", "problem", "code", "button", "window", "project", "app", "application"]):
-                if any(kw in p for kw in ["see", "code", "error", "doing", "screen", "problem", "disappear", "change", "look", "still", "gone", "fixed", "show", "open", "working", "using"]):
+                if any(kw in p for kw in ["see", "code", "error", "doing", "screen", "problem", "disappear", "change", "look", "still", "gone", "fixed", "show", "open", "working", "using", "next"]):
                     matched_ref = next((ref for ref in ["this", "that", "it", "here", "there", "error"] if ref in p), "visual reference")
 
             if matched_phrase or matched_ref:
