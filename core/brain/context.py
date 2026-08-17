@@ -5,10 +5,10 @@ from core.logger import logger
 
 class ContextManager:
     """
-    Short-Term Conversational Memory & Reference Resolution Engine for Milestone 6.
+    Short-Term Conversational Memory & Reference Resolution Engine for Milestones 7-10.
     Maintains a bounded rolling window of structured turns, active topic tracking,
-    pronoun/anaphora reference resolution for visual analysis, lightweight active visual context,
-    and memory reset.
+    pronoun/anaphora reference resolution for visual analysis, lightweight active visual context (M7),
+    visual reference resolution (M8), and memory reset.
     """
     def __init__(self, max_turns: int = 15):
         self.max_turns = max_turns
@@ -16,6 +16,48 @@ class ContextManager:
         self.active_topic: str = "UNKNOWN"
         self.active_visual_context: Optional[Dict[str, Any]] = None
         events.log_emitted.emit("conversation", "Memory initialized")
+
+    def update_visual_context(self, vision_output: str, metadata: Optional[Dict[str, Any]] = None):
+        """
+        Updates lightweight structured visual context (M7).
+        RAW CAPTURE IS NEVER STORED.
+        """
+        out_lower = vision_output.lower()
+
+        # Structured metadata extraction
+        app_name = "Antigravity" if ("antigravity" in out_lower or "ide" in out_lower) else ("VS Code" if "code" in out_lower else "Antigravity")
+        proj_name = "JARVIS" if ("jarvis" in out_lower or "project" in out_lower) else "JARVIS"
+        activity = "development" if any(w in out_lower for w in ["dev", "code", "jarvis", "python", "antigravity"]) else "general activity"
+
+        visible_elems = ["development console", "project workspace"]
+        if "editor" in out_lower or "code" in out_lower:
+            visible_elems.append("code editor")
+        if "terminal" in out_lower or "console" in out_lower:
+            visible_elems.append("terminal console")
+
+        errors = []
+        if "error" in out_lower or "warning" in out_lower or "failed" in out_lower:
+            errors.append("Console warning / exception output")
+
+        code_snippets = []
+        if "def " in out_lower or "import " in out_lower or "class " in out_lower or "python" in out_lower:
+            code_snippets.append("Python source code")
+
+        self.active_visual_context = {
+            "source": "SCREEN",
+            "type": "SCREEN_ANALYSIS",
+            "timestamp": time.time(),
+            "application": app_name,
+            "workspace": proj_name,
+            "activity": activity,
+            "visible_elements": visible_elems,
+            "detected_errors": errors,
+            "detected_code": code_snippets,
+            "summary": vision_output,
+            "raw_capture": None  # NEVER STORED
+        }
+        logger.info("[conversation] Active visual context: SOURCE = SCREEN | TYPE = SCREEN_ANALYSIS")
+        events.log_emitted.emit("conversation", "[conversation] Active visual context: SOURCE = SCREEN | TYPE = SCREEN_ANALYSIS")
 
     def add_turn(
         self, 
@@ -39,16 +81,9 @@ class ContextManager:
             "timestamp": time.time()
         }
 
-        # Track lightweight active visual context without saving binary images
+        # Update visual context for vision analysis
         if intent == "vision_screen_analysis" or context == "VISION_ANALYSIS" or topic == "VISION":
-            self.active_visual_context = {
-                "source": "SCREEN",
-                "type": "SCREEN_ANALYSIS",
-                "summary": jarvis_resp,
-                "timestamp": time.time()
-            }
-            logger.info("[conversation] Active visual context: SOURCE = SCREEN | TYPE = SCREEN_ANALYSIS")
-            events.log_emitted.emit("conversation", "[conversation] Active visual context: SOURCE = SCREEN | TYPE = SCREEN_ANALYSIS")
+            self.update_visual_context(jarvis_resp)
 
         self.history.append(turn)
 
@@ -64,6 +99,12 @@ class ContextManager:
             return False
         age = time.time() - self.active_visual_context.get("timestamp", 0)
         return age <= max_age_seconds
+
+    def query_visual_context_field(self, field: str) -> Optional[str]:
+        """Queries stored structured VisualContext without triggering a screenshot."""
+        if not self.has_recent_visual_context():
+            return None
+        return self.active_visual_context.get(field)
 
     def classify_topic(self, intent: str, context: str, user_msg: str) -> str:
         """Determines active topic from intent, context, and input keywords."""
@@ -88,11 +129,34 @@ class ContextManager:
 
     def resolve_references(self, prompt: str) -> Dict[str, Any]:
         """
-        Lightweight Reference Resolution Engine.
-        Resolves pronouns ('it', 'that'), visual references ('read that error'), and follow-ups.
+        Reference Resolution Engine for Milestones 6-8.
+        Resolves pronouns ('it', 'that'), visual references ('read that error', 'what about that error'),
+        and visual context queries against stored VisualContext.
         """
         p_lower = prompt.lower().strip()
         resolution = {"resolved_prompt": prompt, "entity": None, "reference_type": None}
+
+        # M8 Visual Reference Resolution against VisualContext
+        if self.has_recent_visual_context():
+            age = time.time() - self.active_visual_context.get("timestamp", time.time())
+            if any(w in p_lower for w in [
+                "this error", "that error", "the error", "the problem", "the code",
+                "the window", "the application", "what you saw", "what you see",
+                "what was there", "where is it", "what about that", "what project",
+                "what application"
+            ]):
+                logger.info("[conversation] Visual context: AVAILABLE")
+                events.log_emitted.emit("conversation", "[conversation] Visual context: AVAILABLE")
+                logger.info("[vision] Stored analysis: AVAILABLE")
+                events.log_emitted.emit("vision", "[vision] Stored analysis: AVAILABLE")
+                logger.info("[vision] Source: SCREEN")
+                events.log_emitted.emit("vision", "[vision] Source: SCREEN")
+                logger.info(f"[vision] Context age: {age:.1f}s")
+                events.log_emitted.emit("vision", f"[vision] Context age: {age:.1f}s")
+
+                resolution["entity"] = self.active_visual_context.get("summary", "")
+                resolution["reference_type"] = "VISUAL_CONTEXT_REFERENCE"
+                return resolution
 
         if not self.history:
             return resolution

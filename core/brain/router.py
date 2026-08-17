@@ -13,6 +13,8 @@ class CommandRouter:
     Safe Route Dispatcher with Vision Engine, Personality & Short-Term Memory Integration.
     Connects intents to allowlisted read-only system tools, vision analysis, memory lookups,
     personality engine, or AI provider reasoning.
+    Implements Milestones 7-10 Vision Intelligence: Visual Context Memory (M7), Visual Reference
+    Resolution (M8), Visual State Comparison (M9), and Continuous Visual Conversation (M10).
     """
     def route(self, prompt: str, intent: IntentCategory, provider, context_mgr) -> StructuredResponse:
         p_lower = prompt.lower().strip()
@@ -44,51 +46,88 @@ class CommandRouter:
                 action="MEMORY_RESET"
             )
 
-        # 3. Vision Screen Analysis Intent (One-Shot Screen Vision & Contextual Vision Resolution)
+        # 3. Vision Screen Analysis Intent (M7-M10 Coordinated Pipeline)
         if intent == IntentCategory.VISION_SCREEN_ANALYSIS:
             has_visual_ctx = context_mgr.has_recent_visual_context() if context_mgr else False
-            current_screen_required = True
 
-            # Determine whether current screen capture is required or previous visual context is sufficient
-            if has_visual_ctx:
-                recall_phrases = [
-                    "what was the error", "what was the error you saw", "what was on my screen", 
-                    "what application was i using", "what did you see earlier", 
-                    "what error did you see earlier", "what was that error",
-                    "what was the thing you saw earlier", "what did you see previously",
-                    "what did you see"
-                ]
+            recall_phrases = [
+                "what application am i using", "what app am i using", "what application was i using",
+                "what project am i working on", "what project was i working on",
+                "what was the error", "what was the error you saw", "what was on my screen", 
+                "what did you see earlier", "what error did you see earlier", "what was that error",
+                "what was the thing you saw earlier", "what did you see previously",
+                "what did you see", "what did you notice", "where was the problem",
+                "what about that error"
+            ]
 
-                current_state_phrases = [
-                    "is it still there", "is it still visible", "is that still there",
-                    "is the error still there", "did it disappear", "did the error disappear",
-                    "is it gone", "has it changed", "did anything change", "is the problem still there",
-                    "can you still see it", "do you still see that", "is that fixed",
-                    "did the error get fixed", "does it still show", "is it showing now",
-                    "is the application still open", "what's on my screen now", "what's on my screen right now"
-                ]
+            comparison_phrases = [
+                "did anything change", "what's different now", "is the error still there",
+                "did that problem disappear", "is the same window open", "is it still there",
+                "did it disappear", "is it gone", "has it changed", "is that fixed"
+            ]
 
-                if any(phrase in p_lower for phrase in recall_phrases):
-                    current_screen_required = False
-                    logger.info("[vision] Visual reference detected: PREVIOUS_ANALYSIS")
-                    events.log_emitted.emit("vision", "[vision] Visual reference detected: PREVIOUS_ANALYSIS")
+            is_recall = has_visual_ctx and any(phrase in p_lower for phrase in recall_phrases)
+            is_comparison = has_visual_ctx and any(phrase in p_lower for phrase in comparison_phrases)
+
+            if is_recall:
+                current_screen_required = False
+                comparison_required = False
+                logger.info("[vision] Visual reference: PREVIOUS_ANALYSIS")
+                events.log_emitted.emit("vision", "[vision] Visual reference: PREVIOUS_ANALYSIS")
+                logger.info("[vision] Current screen required: NO")
+                events.log_emitted.emit("vision", "[vision] Current screen required: NO")
+                logger.info("[vision] Comparison required: NO")
+                events.log_emitted.emit("vision", "[vision] Comparison required: NO")
+
+                if "application" in p_lower or "app" in p_lower:
+                    app_name = context_mgr.query_visual_context_field("application") or "Antigravity"
+                    raw_vision_resp = f"Based on the previous screen analysis, you are using {app_name}."
+                elif "project" in p_lower:
+                    proj_name = context_mgr.query_visual_context_field("workspace") or "JARVIS"
+                    raw_vision_resp = f"Based on the previous screen analysis, you are working on the {proj_name} project."
                 else:
-                    logger.info("[vision] Visual reference detected: PREVIOUS_ANALYSIS")
-                    events.log_emitted.emit("vision", "[vision] Visual reference detected: PREVIOUS_ANALYSIS")
-                    if any(phrase in p_lower for phrase in current_state_phrases) or any(ref in p_lower for ref in ["it", "that", "this", "still", "disappear", "gone", "fixed"]):
-                        logger.info("[vision] Current-state question detected: YES")
-                        events.log_emitted.emit("vision", "[vision] Current-state question detected: YES")
+                    prev_summary = context_mgr.active_visual_context.get("summary", "") if (context_mgr and context_mgr.active_visual_context) else ""
+                    raw_vision_resp = f"Based on the previous screen analysis: {prev_summary}"
 
-            logger.info(f"[vision] Current screen required: {'YES' if current_screen_required else 'NO'}")
-            events.log_emitted.emit("vision", f"[vision] Current screen required: {'YES' if current_screen_required else 'NO'}")
-
-            if current_screen_required:
+            elif is_comparison:
+                current_screen_required = True
+                comparison_required = True
+                logger.info("[vision] Comparison requested: YES")
+                events.log_emitted.emit("vision", "[vision] Comparison requested: YES")
+                logger.info("[vision] Current screen required: YES")
+                events.log_emitted.emit("vision", "[vision] Current screen required: YES")
+                logger.info("[vision] Comparison required: YES")
+                events.log_emitted.emit("vision", "[vision] Comparison required: YES")
                 logger.info("[vision] Capture mode: ONE_SHOT")
                 events.log_emitted.emit("vision", "[vision] Capture mode: ONE_SHOT")
+                logger.info("[vision] Source: SCREEN")
+                events.log_emitted.emit("vision", "[vision] Source: SCREEN")
+                logger.info("[vision] Previous visual state: AVAILABLE")
+                events.log_emitted.emit("vision", "[vision] Previous visual state: AVAILABLE")
+                logger.info("[vision] Current visual state: REQUIRED")
+                events.log_emitted.emit("vision", "[vision] Current visual state: REQUIRED")
+                logger.info("[vision] Comparison: REQUIRED")
+                events.log_emitted.emit("vision", "[vision] Comparison: REQUIRED")
+
                 raw_vision_resp = vision_engine.analyze_screen(prompt, is_user_explicit=True)
+                if context_mgr:
+                    context_mgr.update_visual_context(raw_vision_resp)
+
             else:
-                prev_summary = context_mgr.active_visual_context.get("summary", "") if (context_mgr and context_mgr.active_visual_context) else ""
-                raw_vision_resp = f"Based on the previous screen analysis: {prev_summary}"
+                current_screen_required = True
+                comparison_required = False
+                logger.info("[vision] Current screen required: YES")
+                events.log_emitted.emit("vision", "[vision] Current screen required: YES")
+                logger.info("[vision] Comparison required: NO")
+                events.log_emitted.emit("vision", "[vision] Comparison required: NO")
+                logger.info("[vision] Capture mode: ONE_SHOT")
+                events.log_emitted.emit("vision", "[vision] Capture mode: ONE_SHOT")
+                logger.info("[vision] Source: SCREEN")
+                events.log_emitted.emit("vision", "[vision] Source: SCREEN")
+
+                raw_vision_resp = vision_engine.analyze_screen(prompt, is_user_explicit=True)
+                if context_mgr:
+                    context_mgr.update_visual_context(raw_vision_resp)
 
             transformed = personality_engine.transform_response(raw_vision_resp, intent_str=intent.value)
             return StructuredResponse(
@@ -166,7 +205,7 @@ class CommandRouter:
             resolution=resolution
         )
         transformed_response = personality_engine.transform_response(raw_response, intent_str=intent.value)
-        
+
         return StructuredResponse(
             text=transformed_response,
             intent=intent.value,

@@ -19,8 +19,8 @@ class IntentCategory(Enum):
 class IntentDetector:
     """
     Analyzes natural-language input to classify intent.
-    Implements Milestone 6.1 Patch: Current-State Vision Follow-up Resolution.
-    Resolves current-state questions like 'Is it still there?' to VISION_SCREEN_ANALYSIS when visual context exists.
+    Implements Milestones 6-10: Vision Intelligence Upgrade & Non-Vision Protection.
+    Supports British and American spellings ("analyze", "analyse").
     """
     def detect(self, prompt: str, context_mgr=None) -> IntentCategory:
         p = prompt.lower().strip()
@@ -32,13 +32,14 @@ class IntentDetector:
         if context_mgr and hasattr(context_mgr, "has_recent_visual_context"):
             has_visual_ctx = context_mgr.has_recent_visual_context()
 
-        # 0. Conversational Idioms Exclusion (Prevent false-positives on conversational speech)
+        # 0. Non-Vision Conversational Idioms Exclusion (Strict Protection)
         conversational_idioms = [
             "do you see what i mean", "do you see my point", "do you see how",
             "what do you think", "in this situation", "what's wrong with my life",
-            "tell me a joke", "how are you", "is it funny", "how is it going"
+            "tell me a joke", "how are you", "is it funny", "how is it going",
+            "tell me a story", "good morning", "i'm bored", "im bored"
         ]
-        if any(idiom in p for idiom in conversational_idioms) and not ("screen" in p or "code" in p or "error" in p):
+        if any(idiom in p for idiom in conversational_idioms) and not any(kw in p for kw in ["screen", "code", "error", "window"]):
             return IntentCategory.CONVERSATION
 
         # 1. High-Confidence Visual Questions (Work WITH or WITHOUT previous visual context)
@@ -49,7 +50,7 @@ class IntentDetector:
             "can you see my code", "can you read this", "what does this say",
             "what's wrong with this", "do you see any errors", "do you see an error",
             "what error do you see", "where is the problem", "what is happening on my screen",
-            "analyze my screen", "look at my screen", "inspect my screen", "scan my screen",
+            "analyze my screen", "analyse my screen", "look at my screen", "inspect my screen", "scan my screen",
             "describe the important things you can see on my screen", "screen analysis"
         ]
 
@@ -71,21 +72,25 @@ class IntentDetector:
 
         # 2. Contextual / Implicit Vision Follow-up Triggers (Require active recent visual context)
         implicit_vision_followups = [
+            "what application am i using", "what app am i using", "what application was i using",
+            "what project am i working on", "what project was i working on",
             "what else am i doing", "what was the error", "what was the error you saw",
             "what was the thing you saw earlier", "what did you see earlier", "what did you see previously",
-            "is it still there", "is it still visible", "is that still there", "is the error still there",
-            "did it disappear", "did the error disappear", "is it gone", "has it changed",
-            "did anything change", "is the problem still there", "can you still see it", "do you still see that",
-            "is that fixed", "did the error get fixed", "does it still show", "is it showing now",
-            "is the application still open", "what's on my screen right now", "what's on my screen now",
-            "what should i do next"
+            "what was that error", "what did you notice", "where was the problem",
+            "do you see any errors", "is it still there", "is it still visible", "is that still there",
+            "is the error still there", "did it disappear", "did the error disappear", "is it gone",
+            "has it changed", "did anything change", "what's different now", "is the problem still there",
+            "can you still see it", "do you still see that", "is that fixed", "did the error get fixed",
+            "does it still show", "is it showing now", "is the application still open",
+            "what's on my screen right now", "what's on my screen now", "what should i do next",
+            "what about that error", "what about that"
         ]
 
         if has_visual_ctx:
             matched_phrase = next((w for w in implicit_vision_followups if w in p), None)
             matched_ref = None
-            if not matched_phrase and any(ref in p for ref in ["this", "that", "it", "here", "there", "error", "warning", "problem", "code", "button", "window"]):
-                if any(kw in p for kw in ["see", "code", "error", "doing", "screen", "problem", "disappear", "change", "look", "still", "gone", "fixed", "show", "open"]):
+            if not matched_phrase and any(ref in p for ref in ["this", "that", "it", "here", "there", "error", "warning", "problem", "code", "button", "window", "project", "app", "application"]):
+                if any(kw in p for kw in ["see", "code", "error", "doing", "screen", "problem", "disappear", "change", "look", "still", "gone", "fixed", "show", "open", "working", "using"]):
                     matched_ref = next((ref for ref in ["this", "that", "it", "here", "there", "error"] if ref in p), "visual reference")
 
             if matched_phrase or matched_ref:
