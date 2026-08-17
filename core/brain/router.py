@@ -151,24 +151,24 @@ class CommandRouter:
             if interp_req or rec_req:
                 obs_summary = raw_vision_resp.replace("Based on the previous screen analysis: ", "").strip()
                 out_lower = raw_vision_resp.lower()
-                has_error = any(w in out_lower for w in ["syntax", "error", "warning", "mismatch", "failed", "exception"])
+                has_error = any(w in out_lower for w in ["syntax", "error", "warning", "mismatch", "failed", "exception", "alert"])
 
                 sections = []
                 if obs_req:
-                    if obs_summary.startswith("I can see") or obs_summary.startswith("You're currently"):
+                    if obs_summary.startswith("I can see") or obs_summary.startswith("You're currently") or obs_summary.startswith("Visible text") or obs_summary.startswith("The visual analysis") or obs_summary.startswith("Local vision analysis"):
                         sections.append(obs_summary)
                     else:
                         sections.append(f"I can see {obs_summary[0].lower() + obs_summary[1:] if obs_summary else 'your active screen'}.")
 
                 if interp_req:
                     if has_error:
-                        sections.append("Based on that, a syntax assertion warning is flagged on line 47 indicating a parameter count mismatch.")
+                        sections.append("Based on that, an on-screen alert or warning was detected in the visible layout.")
                     else:
                         sections.append("Based on that, your active workspace and console logs are running cleanly with no active errors detected.")
 
                 if rec_req:
                     if has_error:
-                        sections.append("Your next step should be to inspect line 47 and update the parameter count to match the expected signature.")
+                        sections.append("Your next step should be to inspect the flagged line or component and verify the signature mismatch.")
                     else:
                         sections.append("Your next step should be to proceed with your planned development task; no immediate fixes are required.")
 
